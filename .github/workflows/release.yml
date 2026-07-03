@@ -1,0 +1,42 @@
+name: Release artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JamHorse-Android
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  apple:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - run: flutter build macos --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JamHorse-Apple
+          path: |
+            build/ios/iphoneos/Runner.app
+            build/macos/Build/Products/Release/JamHorse.app

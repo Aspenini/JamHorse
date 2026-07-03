@@ -1,0 +1,19 @@
+app-id: com.jamhorse.app
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: jamhorse
+finish-args:
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --talk-name=org.freedesktop.secrets
+modules:
+  - name: jamhorse
+    buildsystem: simple
+    build-commands:
+      - install -D jamhorse /app/bin/jamhorse
+    sources:
+      - type: dir
+        path: ../../build/linux/x64/release/bundle

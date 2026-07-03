@@ -1,0 +1,46 @@
+# Flutter and Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+doc/api/
+
+# FVM SDK cache (the version pin remains tracked)
+.fvm/
+
+# IDEs and operating systems
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Native build state and secrets
+android/.gradle/
+android/key.properties
+android/local.properties
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/.symlinks/
+macos/Flutter/ephemeral/
+macos/Pods/
+macos/.symlinks/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+*.jks
+*.keystore
+*.mobileprovision
+*.p12
+*.cer
+
+# Packaging output
+dist/
+*.dmg
+*.msix
+*.AppImage
+
+# Logs and local secrets
+*.log
+.env
+.env.*
