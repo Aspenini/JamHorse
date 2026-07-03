@@ -54,6 +54,7 @@ class TrackRow extends StatelessWidget {
     super.key,
     this.albumName,
     this.showAlbum = true,
+    this.downloaded = false,
     this.action,
   });
 
@@ -61,6 +62,9 @@ class TrackRow extends StatelessWidget {
   final LibraryItem track;
   final String? albumName;
   final bool showAlbum;
+
+  /// Shows the offline badge: this track plays from its local file.
+  final bool downloaded;
   final VoidCallback onTap;
 
   /// Optional small control (e.g. an un-like heart) shown before the
@@ -108,14 +112,29 @@ class TrackRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        Text(
-                          track.subtitle ?? 'Unknown artist',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: JamColors.muted,
-                            fontSize: 12.5,
-                          ),
+                        Row(
+                          children: [
+                            if (downloaded)
+                              const Padding(
+                                padding: EdgeInsets.only(right: 4),
+                                child: Icon(
+                                  Icons.download_for_offline_rounded,
+                                  size: 14,
+                                  color: JamColors.accentBright,
+                                ),
+                              ),
+                            Flexible(
+                              child: Text(
+                                track.subtitle ?? 'Unknown artist',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: JamColors.muted,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),

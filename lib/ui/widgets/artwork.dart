@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:jamhorse/app/theme.dart';
+import 'package:jamhorse/core/artwork_cache.dart';
 import 'package:jamhorse/domain/models.dart';
 import 'package:jamhorse/state/providers.dart';
 
@@ -35,6 +36,7 @@ class Artwork extends ConsumerWidget {
       child: item.imageUrl == null
           ? placeholder
           : CachedNetworkImage(
+              cacheManager: ArtworkCache.manager,
               imageUrl: item.imageUrl.toString(),
               httpHeaders: session == null
                   ? const {}

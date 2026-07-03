@@ -22,6 +22,7 @@ class LikedSongsScreen extends ConsumerWidget {
     );
     final controller = ref.read(appControllerProvider.notifier);
     final albumNames = ref.watch(albumNamesProvider);
+    final downloadedIds = ref.watch(downloadedItemIdsProvider);
     final total = liked.fold(Duration.zero, (sum, item) => sum + item.duration);
     return Scaffold(
       body: CustomScrollView(
@@ -165,6 +166,7 @@ class LikedSongsScreen extends ConsumerWidget {
                   return TrackRow(
                     index: index + 1,
                     track: item,
+                    downloaded: downloadedIds.contains(item.id),
                     albumName: item.albumId == null
                         ? null
                         : albumNames[item.albumId],

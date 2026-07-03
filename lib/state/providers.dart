@@ -83,6 +83,16 @@ final lyricsProvider =
       return ref.watch(jellyfinGatewayProvider).fetchLyrics(session, itemId);
     });
 
+/// Item ids with a completed download; playback uses the local file for
+/// these instead of streaming.
+final downloadedItemIdsProvider = Provider<Set<String>>((ref) {
+  final records = ref.watch(downloadRecordsProvider).value ?? const [];
+  return {
+    for (final record in records)
+      if (record.status == DownloadStatus.complete) record.itemId,
+  };
+});
+
 /// Newest albums on the server, for the Home "Recently added" row.
 final recentlyAddedProvider = FutureProvider<List<LibraryItem>>((ref) {
   final session = ref.watch(

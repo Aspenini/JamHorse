@@ -4,10 +4,12 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:jamhorse/app/theme.dart';
+import 'package:jamhorse/core/artwork_cache.dart';
 import 'package:jamhorse/core/logging.dart';
 import 'package:jamhorse/domain/models.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/widgets/brand.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -22,6 +24,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   var _streamQuality = 'Original';
   // 0 means unlimited.
   var _storageLimitGb = 10;
+  String? _downloadsPath;
 
   @override
   void initState() {
@@ -34,6 +37,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _streamQuality = prefs.getString('streamQuality') ?? 'Original';
       });
     });
+    getApplicationSupportDirectory().then((dir) {
+      if (!mounted) return;
+      setState(() => _downloadsPath = '${dir.path}/downloads');
+    });
+  }
+
+  Future<void> _revealDownloads() async {
+    final path = _downloadsPath;
+    if (path == null) return;
+    final dir = Directory(path);
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    if (Platform.isMacOS) {
+      await Process.run('open', [path]);
+    } else if (Platform.isWindows) {
+      await Process.run('explorer', [path]);
+    } else if (Platform.isLinux) {
+      await Process.run('xdg-open', [path]);
+    }
+  }
+
+  Future<void> _clearArtworkCache() async {
+    final messenger = ScaffoldMessenger.of(context);
+    await ArtworkCache.clear();
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Artwork cache cleared. Images reload on next view.',
+        ),
+      ),
+    );
   }
 
   Future<void> _setWifiOnly(bool value) async {
@@ -183,6 +216,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       _setStorageLimit(value ?? _storageLimitGb),
                 ),
               ),
+              if (Platform.isMacOS ||
+                  Platform.isWindows ||
+                  Platform.isLinux)
+                ListTile(
+                  leading: const Icon(Icons.folder_open_rounded),
+                  title: const Text('Downloads folder'),
+                  subtitle: Text(
+                    _downloadsPath ?? 'Locating…',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.open_in_new_rounded),
+                  onTap: _revealDownloads,
+                ),
             ],
           ),
           _Section(
@@ -221,6 +268,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 title: const Text('Export redacted diagnostics'),
                 trailing: const Icon(Icons.ios_share_rounded),
                 onTap: _exportDiagnostics,
+              ),
+              ListTile(
+                leading: const Icon(Icons.cleaning_services_rounded),
+                title: const Text('Clear artwork cache'),
+                subtitle: const Text(
+                  'Cached covers make browsing instant and work offline; '
+                  'clear to free space or fix stale images.',
+                ),
+                onTap: _clearArtworkCache,
               ),
             ],
           ),

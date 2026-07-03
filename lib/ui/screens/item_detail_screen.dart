@@ -50,6 +50,7 @@ class ItemDetailScreen extends ConsumerWidget {
         .toList(growable: false);
     final showAlbumColumn = item.type != LibraryItemType.album;
     final albumNames = ref.watch(albumNamesProvider);
+    final downloadedIds = ref.watch(downloadedItemIdsProvider);
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -175,6 +176,7 @@ class ItemDetailScreen extends ConsumerWidget {
                   return TrackRow(
                     index: index + 1,
                     track: child,
+                    downloaded: downloadedIds.contains(child.id),
                     showAlbum: showAlbumColumn,
                     albumName: child.albumId == null
                         ? null
