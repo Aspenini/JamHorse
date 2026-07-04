@@ -1,0 +1,18 @@
+This project uses IconKitchen for generating icons for each platform.
+`icons-output` is where the built IconKitchen icons are, and `icon-src` is where the src svg files are.
+IconKitchen uses the src icon without a background.
+
+
+
+[Click here to open the icon kitchen page](https://icon.kitchen/i/H4sIAAAAAAAAA1VRy26DMBD8lWh7pRVOBKm4tU3Sh8SpkXqIcthgA1YNRrZJE6H8e9eGpCoHszsez3jHAxxR9cJCNkBZvWilDWRwV4YPIjj8YfGBMSYIK6vtuRMEyQarEcjRfkNWorLCn5n2i3DUA68GuRSt8zbW6S74xUEVWcw4kZjv2HKepo9wiQDbSpHGgiXUkKI4ud4QMIQ2F7b2Ep2WrSOx3QAnyOKHeRLB-VqM9qSaLNLVZk2qE2t5ZfnixkqfFqs1ee-Dw2eN4wzSFHSRCFwtGsFvQ3b2ufqXSmc3AWBlwhADsJXOzwAf2LxpY0fWe6FbyJzpg8gWKyVbT8p7K4vZl3S17t2M3Ga55FyJBlufR6N5r_w77SgabrT0mUltaf0RB1obLMYOXVGHyh3Db6K7o7dXeL6nB6Ak95dfAMM0pPwBAAA)
+
+
+
+OR
+
+
+
+Here is the full URL (:
+
+```https://icon.kitchen/i/H4sIAAAAAAAAA1VRy26DMBD8lWh7pRVOBKm4tU3Sh8SpkXqIcthgA1YNRrZJE6H8e9eGpCoHszsez3jHAxxR9cJCNkBZvWilDWRwV4YPIjj8YfGBMSYIK6vtuRMEyQarEcjRfkNWorLCn5n2i3DUA68GuRSt8zbW6S74xUEVWcw4kZjv2HKepo9wiQDbSpHGgiXUkKI4ud4QMIQ2F7b2Ep2WrSOx3QAnyOKHeRLB-VqM9qSaLNLVZk2qE2t5ZfnixkqfFqs1ee-Dw2eN4wzSFHSRCFwtGsFvQ3b2ufqXSmc3AWBlwhADsJXOzwAf2LxpY0fWe6FbyJzpg8gWKyVbT8p7K4vZl3S17t2M3Ga55FyJBlufR6N5r\_w77SgabrT0mUltaf0RB1obLMYOXVGHyh3Db6K7o7dXeL6nB6Ak95dfAMM0pPwBAAA```
+

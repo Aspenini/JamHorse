@@ -29,5 +29,38 @@ void main() {
         throwsFormatException,
       );
     });
+
+    test('rejects embedded credentials and token-like query parameters', () {
+      for (final input in [
+        'https://user:secret@music.example.com',
+        'https://music.example.com?api_key=secret',
+        'https://music.example.com/#token',
+      ]) {
+        expect(() => ServerUriPolicy.normalize(input), throwsFormatException);
+      }
+    });
+
+    test('does not treat local DNS names as private HTTP', () {
+      expect(
+        () => ServerUriPolicy.validate(
+          Uri.parse('http://jellyfin.local:8096'),
+          allowPrivateHttp: true,
+        ),
+        throwsFormatException,
+      );
+    });
+
+    test('recognizes loopback, link-local, RFC1918, and ULA literals', () {
+      for (final input in [
+        'http://127.0.0.1:8096',
+        'http://169.254.10.2:8096',
+        'http://10.0.0.1:8096',
+        'http://172.31.0.1:8096',
+        'http://192.168.0.1:8096',
+        'http://[fd00::1]:8096',
+      ]) {
+        expect(ServerUriPolicy.isPrivateHttp(Uri.parse(input)), isTrue);
+      }
+    });
   });
 }

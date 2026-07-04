@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:jamhorse/app/theme.dart';
 import 'package:jamhorse/domain/models.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/widgets/artwork.dart';
@@ -34,45 +33,75 @@ class BrowseScreen extends ConsumerWidget {
       _ => 'Songs',
     };
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          title,
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
-        backgroundColor: JamColors.ink,
-      ),
       body: items.isEmpty
           ? const Center(child: Text('Nothing here yet.'))
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                final extent = constraints.maxWidth >= 1200
-                    ? 190.0
-                    : constraints.maxWidth >= 700
-                    ? 170.0
-                    : 145.0;
-                return GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 40),
-                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: extent,
-                    mainAxisExtent: extent + 58,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 18,
+          : CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
+                  sliver: SliverToBoxAdapter(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.headlineLarge,
+                    ),
                   ),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return ArtworkCard(
-                      item: item,
-                      width: extent,
-                      onTap: () => item.type == LibraryItemType.track
-                          ? ref
-                                .read(appControllerProvider.notifier)
-                                .play(item)
-                          : context.push('/item/${item.id}'),
-                    );
-                  },
-                );
-              },
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 48),
+                  sliver: SliverLayoutBuilder(
+                    builder: (context, constraints) {
+                      final width = constraints.crossAxisExtent;
+                      final extent = width >= 1200
+                          ? 210.0
+                          : width >= 700
+                          ? 190.0
+                          : 160.0;
+                      return SliverGrid.builder(
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: extent,
+                          mainAxisExtent: extent + 68,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 12,
+                        ),
+                        itemCount: items.length,
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          return ArtworkCard(
+                            item: item,
+                            width: extent,
+                            onPlay: () async {
+                              final controller = ref.read(
+                                appControllerProvider.notifier,
+                              );
+                              if (item.type == LibraryItemType.track) {
+                                await controller.play(item);
+                                return;
+                              }
+                              final children = await ref.read(
+                                childrenProvider(item.id).future,
+                              );
+                              final tracks = children
+                                  .where(
+                                    (child) =>
+                                        child.type == LibraryItemType.track,
+                                  )
+                                  .toList(growable: false);
+                              if (tracks.isNotEmpty) {
+                                await controller.playQueue(tracks);
+                              }
+                            },
+                            onTap: () => item.type == LibraryItemType.track
+                                ? ref
+                                      .read(appControllerProvider.notifier)
+                                      .play(item)
+                                : context.push('/item/${item.id}'),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
     );
   }

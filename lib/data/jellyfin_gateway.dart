@@ -6,18 +6,22 @@ import 'package:jamhorse/core/logging.dart';
 import 'package:jamhorse/core/server_uri_policy.dart';
 import 'package:jamhorse/domain/contracts.dart';
 import 'package:jamhorse/domain/models.dart';
+import 'package:uuid/uuid.dart';
 
 class DioJellyfinGateway implements JellyfinGateway {
-  DioJellyfinGateway({Dio? dio}) : _dio = dio ?? Dio() {
+  DioJellyfinGateway({Dio? dio, this.appVersion = 'development'})
+    : _dio = dio ?? Dio() {
     _dio.options
       ..connectTimeout = const Duration(seconds: 12)
       ..receiveTimeout = const Duration(seconds: 30)
       ..sendTimeout = const Duration(seconds: 20)
       ..followRedirects = false
-      ..validateStatus = (status) => status != null && status < 400;
+      ..validateStatus = (status) =>
+          status != null && status >= 200 && status < 300;
   }
 
   final Dio _dio;
+  final String appVersion;
 
   static bool isSupportedServerVersion(String version) {
     final parts = version.split('.');
@@ -34,17 +38,21 @@ class DioJellyfinGateway implements JellyfinGateway {
     required String deviceId,
     required bool allowPrivateHttp,
   }) async {
-    ServerUriPolicy.validate(
+    ServerUriPolicy.validate(baseUrl, allowPrivateHttp: allowPrivateHttp);
+    final server = await _inspectServer(
       baseUrl,
       allowPrivateHttp: allowPrivateHttp,
     );
-    final server = await inspectServer(baseUrl);
     if (!isSupportedServerVersion(server.version)) {
       throw StateError('JamHorse requires Jellyfin 10.10 or newer.');
     }
 
     final response = await _dio.post<Map<String, dynamic>>(
-      _url(baseUrl, '/Users/AuthenticateByName'),
+      _url(
+        baseUrl,
+        '/Users/AuthenticateByName',
+        allowPrivateHttp: allowPrivateHttp,
+      ),
       data: {'Username': username.trim(), 'Pw': password},
       options: Options(headers: _headers(deviceId: deviceId)),
     );
@@ -56,7 +64,8 @@ class DioJellyfinGateway implements JellyfinGateway {
       throw StateError('Jellyfin did not return a valid session.');
     }
     final profile = ServerProfile(
-      id: server.id,
+      profileId: const Uuid().v4(),
+      serverId: server.id,
       baseUrl: baseUrl,
       name: server.name,
       userId: userId,
@@ -71,8 +80,15 @@ class DioJellyfinGateway implements JellyfinGateway {
 
   @override
   Future<ServerInfo> inspectServer(Uri baseUrl) async {
+    return _inspectServer(baseUrl);
+  }
+
+  Future<ServerInfo> _inspectServer(
+    Uri baseUrl, {
+    bool allowPrivateHttp = false,
+  }) async {
     final response = await _dio.get<Map<String, dynamic>>(
-      _url(baseUrl, '/System/Info/Public'),
+      _url(baseUrl, '/System/Info/Public', allowPrivateHttp: allowPrivateHttp),
     );
     final data = response.data ?? const <String, dynamic>{};
     final id = data['Id'] as String?;
@@ -87,7 +103,7 @@ class DioJellyfinGateway implements JellyfinGateway {
   }
 
   @override
-  Future<List<LibraryItem>> fetchLibrary(
+  Future<LibraryPage> fetchLibraryPage(
     AuthSession session, {
     Set<LibraryItemType> types = const {},
     int limit = 200,
@@ -95,7 +111,12 @@ class DioJellyfinGateway implements JellyfinGateway {
     String? searchTerm,
     String? sortBy,
     String? sortOrder,
+    int startIndex = 0,
+    OperationContext? context,
   }) async {
+    context?.throwIfObsolete();
+    final safeLimit = limit.clamp(1, 500);
+    final safeStartIndex = startIndex < 0 ? 0 : startIndex;
     final includeTypes =
         (types.isEmpty
                 ? {
@@ -110,18 +131,16 @@ class DioJellyfinGateway implements JellyfinGateway {
             .where((value) => value.isNotEmpty)
             .join(',');
     final response = await _dio.get<Map<String, dynamic>>(
-      _url(
-        session.profile.baseUrl,
-        '/Users/${session.profile.userId}/Items',
-      ),
+      _sessionUrl(session, '/Users/${session.profile.userId}/Items'),
       queryParameters: {
         'Recursive': true,
         'IncludeItemTypes': includeTypes,
-        'Fields':
-            'PrimaryImageAspectRatio,Genres,MediaSources,Path,Overview,DateCreated',
+        'Fields': 'Album,AlbumId,ArtistItems,ParentIndexNumber,DateCreated',
         'EnableImages': true,
         'EnableUserData': true,
-        'Limit': limit,
+        'Limit': safeLimit,
+        'StartIndex': safeStartIndex,
+        'EnableTotalRecordCount': true,
         'ParentId': parentId,
         'SearchTerm': searchTerm,
         'SortBy': sortBy ?? 'SortName',
@@ -129,20 +148,23 @@ class DioJellyfinGateway implements JellyfinGateway {
       }..removeWhere((_, value) => value == null),
       options: Options(headers: _sessionHeaders(session)),
     );
+    context?.throwIfObsolete();
     final items = response.data?['Items'] as List<dynamic>? ?? const [];
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map((item) => _mapItem(session, item))
-        .toList(growable: false);
+    return LibraryPage(
+      items: items
+          .whereType<Map<String, dynamic>>()
+          .map((item) => _mapItem(session, item))
+          .toList(growable: false),
+      startIndex:
+          (response.data?['StartIndex'] as num?)?.toInt() ?? safeStartIndex,
+      totalRecordCount: (response.data?['TotalRecordCount'] as num?)?.toInt(),
+    );
   }
 
   @override
   Future<List<LibraryItem>> fetchFavorites(AuthSession session) async {
     final response = await _dio.get<Map<String, dynamic>>(
-      _url(
-        session.profile.baseUrl,
-        '/Users/${session.profile.userId}/Items',
-      ),
+      _sessionUrl(session, '/Users/${session.profile.userId}/Items'),
       queryParameters: {
         'Recursive': true,
         'Filters': 'IsFavorite',
@@ -164,10 +186,7 @@ class DioJellyfinGateway implements JellyfinGateway {
   @override
   Future<List<LibraryItem>> fetchRecentlyPlayed(AuthSession session) async {
     final response = await _dio.get<Map<String, dynamic>>(
-      _url(
-        session.profile.baseUrl,
-        '/Users/${session.profile.userId}/Items',
-      ),
+      _sessionUrl(session, '/Users/${session.profile.userId}/Items'),
       queryParameters: {
         'Recursive': true,
         'IncludeItemTypes': 'Audio,MusicAlbum',
@@ -193,19 +212,23 @@ class DioJellyfinGateway implements JellyfinGateway {
   ) async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
-        _url(session.profile.baseUrl, '/Audio/$itemId/Lyrics'),
+        _sessionUrl(session, '/Audio/$itemId/Lyrics'),
         options: Options(headers: _sessionHeaders(session)),
       );
       final lines = response.data?['Lyrics'] as List<dynamic>? ?? const [];
-      return lines.whereType<Map<String, dynamic>>().map((line) {
-        final ticks = line['Start'] as num?;
-        return LyricsLine(
-          text: (line['Text'] as String?) ?? '',
-          start: ticks == null
-              ? null
-              : Duration(microseconds: (ticks / 10).round()),
-        );
-      }).where((line) => line.text.isNotEmpty).toList(growable: false);
+      return lines
+          .whereType<Map<String, dynamic>>()
+          .map((line) {
+            final ticks = line['Start'] as num?;
+            return LyricsLine(
+              text: (line['Text'] as String?) ?? '',
+              start: ticks == null
+                  ? null
+                  : Duration(microseconds: (ticks / 10).round()),
+            );
+          })
+          .where((line) => line.text.isNotEmpty)
+          .toList(growable: false);
     } on DioException catch (error) {
       if (error.response?.statusCode == HttpStatus.notFound) return const [];
       rethrow;
@@ -215,7 +238,7 @@ class DioJellyfinGateway implements JellyfinGateway {
   @override
   Uri imageUri(AuthSession session, String itemId, {int width = 600}) {
     return Uri.parse(
-      _url(session.profile.baseUrl, '/Items/$itemId/Images/Primary'),
+      _sessionUrl(session, '/Items/$itemId/Images/Primary'),
     ).replace(queryParameters: {'maxWidth': '$width', 'quality': '90'});
   }
 
@@ -225,13 +248,10 @@ class DioJellyfinGateway implements JellyfinGateway {
   }
 
   @override
-  Uri streamUri(
-    AuthSession session,
-    LibraryItem item, {
-    int? maxBitrate,
-  }) {
+  Uri streamUri(AuthSession session, LibraryItem item, {int? maxBitrate}) {
+    _validateItemSession(session, item);
     return Uri.parse(
-      _url(session.profile.baseUrl, '/Audio/${item.id}/universal'),
+      _sessionUrl(session, '/Audio/${item.id}/universal'),
     ).replace(
       queryParameters: {
         'UserId': session.profile.userId,
@@ -241,7 +261,7 @@ class DioJellyfinGateway implements JellyfinGateway {
         'TranscodingProtocol': 'http',
         'AudioCodec': 'aac',
         'MaxStreamingBitrate': '${maxBitrate ?? 140000000}',
-        'EnableRedirection': 'true',
+        'EnableRedirection': 'false',
         'EnableRemoteMedia': 'false',
       },
     );
@@ -253,9 +273,8 @@ class DioJellyfinGateway implements JellyfinGateway {
     String itemId,
     bool favorite,
   ) async {
-    final path =
-        '/Users/${session.profile.userId}/FavoriteItems/$itemId';
-    final url = _url(session.profile.baseUrl, path);
+    final path = '/Users/${session.profile.userId}/FavoriteItems/$itemId';
+    final url = _sessionUrl(session, path);
     final options = Options(headers: _sessionHeaders(session));
     if (favorite) {
       await _dio.post<void>(url, options: options);
@@ -270,6 +289,7 @@ class DioJellyfinGateway implements JellyfinGateway {
     LibraryItem item,
     Duration position, {
     required bool paused,
+    String? playSessionId,
   }) {
     return _report(
       session,
@@ -277,20 +297,23 @@ class DioJellyfinGateway implements JellyfinGateway {
       item,
       position,
       paused: paused,
+      playSessionId: playSessionId,
     );
   }
 
   @override
   Future<void> reportPlaybackStarted(
     AuthSession session,
-    LibraryItem item,
-  ) {
+    LibraryItem item, {
+    String? playSessionId,
+  }) {
     return _report(
       session,
       '/Sessions/Playing',
       item,
       Duration.zero,
       paused: false,
+      playSessionId: playSessionId,
     );
   }
 
@@ -298,14 +321,16 @@ class DioJellyfinGateway implements JellyfinGateway {
   Future<void> reportPlaybackStopped(
     AuthSession session,
     LibraryItem item,
-    Duration position,
-  ) {
+    Duration position, {
+    String? playSessionId,
+  }) {
     return _report(
       session,
       '/Sessions/Playing/Stopped',
       item,
       position,
       paused: true,
+      playSessionId: playSessionId,
     );
   }
 
@@ -315,9 +340,11 @@ class DioJellyfinGateway implements JellyfinGateway {
     LibraryItem item,
     Duration position, {
     required bool paused,
+    String? playSessionId,
   }) async {
+    _validateItemSession(session, item);
     await _dio.post<void>(
-      _url(session.profile.baseUrl, path),
+      _sessionUrl(session, path),
       data: {
         'ItemId': item.id,
         'MediaSourceId': item.id,
@@ -325,66 +352,75 @@ class DioJellyfinGateway implements JellyfinGateway {
         'IsPaused': paused,
         'IsMuted': false,
         'PlayMethod': 'DirectStream',
-        'PlaySessionId': '${session.profile.deviceId}-${item.id}',
+        'PlaySessionId':
+            playSessionId ?? '${session.profile.deviceId}-${item.id}',
         'RepeatMode': 'RepeatNone',
       },
       options: Options(headers: _sessionHeaders(session)),
     );
   }
 
-  LibraryItem _mapItem(
-    AuthSession session,
-    Map<String, dynamic> data,
-  ) {
+  LibraryItem _mapItem(AuthSession session, Map<String, dynamic> data) {
     final id = (data['Id'] as String?) ?? '';
     final userData = data['UserData'] as Map<String, dynamic>?;
     final artistItems = data['ArtistItems'] as List<dynamic>?;
     final firstArtist = artistItems
         ?.whereType<Map<String, dynamic>>()
         .firstOrNull;
+    final artists =
+        (data['Artists'] as List<dynamic>?)?.whereType<String>().toList() ??
+        const <String>[];
+    final imageTags = data['ImageTags'] as Map<String, dynamic>?;
+    final hasPrimaryImage = imageTags?['Primary'] != null;
     return LibraryItem(
       id: id,
-      serverId: session.profile.id,
+      profileId: session.profile.profileId,
+      serverId: session.profile.serverId,
       type: _domainType(data['Type'] as String?),
       name: (data['Name'] as String?) ?? 'Untitled',
-      subtitle:
-          (data['AlbumArtist'] as String?) ??
-          (data['Artists'] as List<dynamic>?)?.whereType<String>().join(', '),
+      subtitle: (data['AlbumArtist'] as String?) ?? artists.join(', '),
       albumId: data['AlbumId'] as String?,
+      albumName: data['Album'] as String?,
       artistId: firstArtist?['Id'] as String?,
-      imageUrl: id.isEmpty ? null : imageUri(session, id),
+      artists: artists,
+      imageUrl: id.isEmpty || !hasPrimaryImage ? null : imageUri(session, id),
       duration: Duration(
         microseconds: (((data['RunTimeTicks'] as num?) ?? 0) / 10).round(),
       ),
       indexNumber: data['IndexNumber'] as int?,
+      discNumber: data['ParentIndexNumber'] as int?,
       productionYear: data['ProductionYear'] as int?,
       isFavorite: (userData?['IsFavorite'] as bool?) ?? false,
+      hasPrimaryImage: hasPrimaryImage,
       container: data['Container'] as String?,
     );
   }
 
-  Map<String, String> _headers({
-    required String deviceId,
-    String? token,
-  }) {
+  Map<String, String> _headers({required String deviceId, String? token}) {
     final tokenPart = token == null ? '' : ', Token="$token"';
     return {
       'Authorization':
           'MediaBrowser Client="JamHorse", Device="JamHorse", '
-          'DeviceId="$deviceId", Version="1.0.0"$tokenPart',
+          'DeviceId="$deviceId", Version="$appVersion"$tokenPart',
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
   }
 
   Map<String, String> _sessionHeaders(AuthSession session) {
-    return _headers(
-      deviceId: session.profile.deviceId,
-      token: session.token,
+    return _headers(deviceId: session.profile.deviceId, token: session.token);
+  }
+
+  String _sessionUrl(AuthSession session, String path) {
+    return _url(
+      session.profile.baseUrl,
+      path,
+      allowPrivateHttp: session.profile.allowPrivateHttp,
     );
   }
 
-  String _url(Uri base, String path) {
+  String _url(Uri base, String path, {bool allowPrivateHttp = false}) {
+    ServerUriPolicy.validate(base, allowPrivateHttp: allowPrivateHttp);
     final root = base.toString().replaceFirst(RegExp(r'/$'), '');
     return '$root$path';
   }
@@ -399,6 +435,13 @@ class DioJellyfinGateway implements JellyfinGateway {
       LibraryItemType.folder => 'Folder',
       LibraryItemType.unknown => '',
     };
+  }
+
+  void _validateItemSession(AuthSession session, LibraryItem item) {
+    if (item.profileId != session.profile.profileId ||
+        item.serverId != session.profile.serverId) {
+      throw StateError('This item belongs to a different account profile.');
+    }
   }
 
   LibraryItemType _domainType(String? type) {

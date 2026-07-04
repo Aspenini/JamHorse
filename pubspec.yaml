@@ -1,7 +1,7 @@
 name: jamhorse
 description: A fluent, cross-platform Jellyfin music player.
 publish_to: none
-version: 1.0.0+1
+version: 0.9.0+1
 
 environment:
   sdk: ^3.12.2
@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   audio_service: ^0.18.18
+  audio_service_mpris: ^0.2.1
+  audio_service_win: ^0.0.3
   audio_session: ^0.2.3
   background_downloader: ^9.5.5
   cached_network_image: ^3.4.1
@@ -20,16 +22,18 @@ dependencies:
   flutter_cache_manager: ^3.4.1
   flutter_riverpod: ^3.3.2
   flutter_secure_storage: ^10.3.1
+  flutter_chrome_cast: ^1.4.6
+  file_selector: ^1.0.3
   go_router: ^17.3.0
-  jellyfin_api:
-    path: packages/jellyfin_api
   just_audio: ^0.10.5
   just_audio_media_kit: ^2.1.0
   logging: ^1.3.0
-  media_kit_libs_linux: any
-  media_kit_libs_windows_audio: any
+  media_kit_libs_linux: ^1.2.1
+  media_kit_libs_windows_audio: ^1.0.9
+  package_info_plus: ^8.3.1
   path_provider: ^2.1.5
   shared_preferences: ^2.5.3
+  share_plus: ^11.1.0
   uuid: ^4.5.2
   window_manager: ^0.5.1
 
@@ -39,9 +43,23 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  msix: ^3.18.0
 
 flutter:
   uses-material-design: true
   assets:
-    - assets/branding/
-    - assets/icons/
+    - assets/icons-output/web/icon-512.png
+    - LICENSE
+    - THIRD_PARTY_NOTICES.md
+
+msix_config:
+  display_name: JamHorse
+  publisher_display_name: JamHorse contributors
+  identity_name: com.jamhorse.app
+  publisher: CN=JamHorse
+  logo_path: assets/icons-output/web/icon-512.png
+  capabilities: internetClient
+  output_path: dist
+  output_name: JamHorse-windows
+  sign_msix: false
+  install_certificate: false

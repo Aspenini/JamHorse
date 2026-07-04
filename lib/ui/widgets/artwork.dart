@@ -21,6 +21,11 @@ class Artwork extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(appControllerProvider).session;
+    final authenticated =
+        session != null &&
+        session.profile.profileId == item.profileId &&
+        item.imageUrl != null &&
+        _sameOrigin(session.profile.baseUrl, item.imageUrl!);
     final placeholder = _ArtworkPlaceholder(
       icon: switch (item.type) {
         LibraryItemType.artist => Icons.person_rounded,
@@ -33,16 +38,15 @@ class Artwork extends ConsumerWidget {
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
-      child: item.imageUrl == null
+      child: item.imageUrl == null || !authenticated
           ? placeholder
           : CachedNetworkImage(
               cacheManager: ArtworkCache.manager,
+              cacheKey: '${item.profileId}:${item.imageUrl}',
               imageUrl: item.imageUrl.toString(),
-              httpHeaders: session == null
-                  ? const {}
-                  : ref
-                        .read(jellyfinGatewayProvider)
-                        .playbackHeaders(session),
+              httpHeaders: ref
+                  .read(jellyfinGatewayProvider)
+                  .playbackHeaders(session),
               fit: BoxFit.cover,
               placeholder: (_, _) => placeholder,
               errorWidget: (_, _, _) => placeholder,
@@ -87,59 +91,165 @@ class _ArtworkPlaceholder extends StatelessWidget {
   }
 }
 
-class ArtworkCard extends ConsumerWidget {
+class ArtworkCard extends ConsumerStatefulWidget {
   const ArtworkCard({
     required this.item,
     required this.onTap,
     super.key,
+    this.onPlay,
     this.width = 176,
   });
 
   final LibraryItem item;
   final VoidCallback onTap;
+  final VoidCallback? onPlay;
   final double width;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ArtworkCard> createState() => _ArtworkCardState();
+}
+
+class _ArtworkCardState extends ConsumerState<ArtworkCard> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
     return SizedBox(
-      width: width,
+      width: widget.width,
       child: Semantics(
         button: true,
-        label: '${item.name}, ${item.subtitle ?? item.type.name}',
-        child: InkWell(
-          mouseCursor: SystemMouseCursors.click,
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          onLongPress: () => _showActions(context, ref),
-          child: Padding(
-            padding: const EdgeInsets.all(6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AspectRatio(
-                  aspectRatio: 1,
-                  child: Hero(
-                    tag: 'art-${item.serverId}-${item.id}',
-                    child: Artwork(item: item),
-                  ),
+        label:
+            '${widget.item.name}, '
+            '${widget.item.subtitle ?? widget.item.type.name}',
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() {
+            _hovered = false;
+            _pressed = false;
+          }),
+          child: AnimatedScale(
+            scale: _pressed
+                ? 0.985
+                : _hovered
+                ? 1.012
+                : 1,
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            child: InkWell(
+              mouseCursor: SystemMouseCursors.click,
+              borderRadius: BorderRadius.circular(8),
+              onTap: widget.onTap,
+              onTapDown: (_) => setState(() => _pressed = true),
+              onTapUp: (_) => setState(() => _pressed = false),
+              onTapCancel: () => setState(() => _pressed = false),
+              onLongPress: () => _showActions(context, ref),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _hovered ? JamColors.softHover : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: _hovered
+                      ? const [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 18,
+                            offset: Offset(0, 8),
+                          ),
+                        ]
+                      : const [],
                 ),
-                const SizedBox(height: 11),
-                Text(
-                  item.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 1,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          AnimatedScale(
+                            scale: _hovered ? 1.018 : 1,
+                            duration: const Duration(milliseconds: 240),
+                            curve: Curves.easeOutCubic,
+                            child: Hero(
+                              tag:
+                                  'art-${widget.item.profileId}-${widget.item.id}',
+                              child: Artwork(
+                                item: widget.item,
+                                borderRadius:
+                                    widget.item.type == LibraryItemType.artist
+                                    ? 999
+                                    : 6,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            right: 9,
+                            bottom: 9,
+                            child: AnimatedSlide(
+                              duration: const Duration(milliseconds: 190),
+                              curve: Curves.easeOutCubic,
+                              offset: _hovered
+                                  ? Offset.zero
+                                  : const Offset(0, 0.35),
+                              child: AnimatedOpacity(
+                                duration: const Duration(milliseconds: 150),
+                                opacity: _hovered ? 1 : 0,
+                                child: Material(
+                                  color: JamColors.accent,
+                                  elevation: 8,
+                                  shadowColor: Colors.black87,
+                                  shape: const CircleBorder(),
+                                  child: InkWell(
+                                    customBorder: const CircleBorder(),
+                                    onTap: widget.onPlay ?? widget.onTap,
+                                    child: const SizedBox.square(
+                                      dimension: 48,
+                                      child: Icon(
+                                        Icons.play_arrow_rounded,
+                                        color: Colors.black,
+                                        size: 30,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 160),
+                      style:
+                          Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: _hovered
+                                ? Colors.white
+                                : const Color(0xFFF2F2F2),
+                            fontWeight: FontWeight.w700,
+                          ) ??
+                          const TextStyle(),
+                      child: Text(
+                        widget.item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      widget.item.subtitle ?? widget.item.type.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: JamColors.muted),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  item.subtitle ?? item.type.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: JamColors.muted,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -160,21 +270,25 @@ class ArtworkCard extends ConsumerWidget {
               title: const Text('Play'),
               onTap: () {
                 Navigator.pop(context);
-                ref.read(appControllerProvider.notifier).play(item);
+                ref.read(appControllerProvider.notifier).play(widget.item);
               },
             ),
             ListTile(
               leading: Icon(
-                item.isFavorite
+                widget.item.isFavorite
                     ? Icons.favorite_rounded
                     : Icons.favorite_border_rounded,
               ),
               title: Text(
-                item.isFavorite ? 'Remove from favorites' : 'Add to favorites',
+                widget.item.isFavorite
+                    ? 'Remove from favorites'
+                    : 'Add to favorites',
               ),
               onTap: () {
                 Navigator.pop(context);
-                ref.read(appControllerProvider.notifier).toggleFavorite(item);
+                ref
+                    .read(appControllerProvider.notifier)
+                    .toggleFavorite(widget.item);
               },
             ),
             ListTile(
@@ -182,7 +296,7 @@ class ArtworkCard extends ConsumerWidget {
               title: const Text('Download'),
               onTap: () {
                 Navigator.pop(context);
-                ref.read(appControllerProvider.notifier).download(item);
+                ref.read(appControllerProvider.notifier).download(widget.item);
               },
             ),
           ],
@@ -190,4 +304,10 @@ class ArtworkCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+bool _sameOrigin(Uri left, Uri right) {
+  return left.scheme == right.scheme &&
+      left.host == right.host &&
+      left.port == right.port;
 }

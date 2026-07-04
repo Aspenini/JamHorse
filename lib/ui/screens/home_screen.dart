@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,46 +6,17 @@ import 'package:jamhorse/domain/models.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/widgets/artwork.dart';
 
-class HomeScreen extends ConsumerStatefulWidget {
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
-  ConsumerState<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final _searchController = TextEditingController();
-  Timer? _debounce;
-
-  bool get _searching => _searchController.text.trim().isNotEmpty;
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _onQueryChanged(String value) {
-    setState(() {});
-    _debounce?.cancel();
-    _debounce = Timer(
-      const Duration(milliseconds: 280),
-      () => ref.read(appControllerProvider.notifier).search(value),
-    );
-  }
-
-  void _clearSearch() {
-    _searchController.clear();
-    ref.read(appControllerProvider.notifier).search('');
-    setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
+    final query = ref.watch(searchQueryProvider).trim();
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: RefreshIndicator(
+        color: JamColors.accent,
         onRefresh: () async {
           await ref.read(appControllerProvider.notifier).synchronize();
           ref.invalidate(recentlyAddedProvider);
@@ -56,65 +25,95 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            SliverAppBar(
-              floating: true,
-              snap: true,
-              backgroundColor: JamColors.ink.withAlpha(235),
-              title: Text(
-                _greeting(),
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              actions: [
-                if (state.syncing)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                IconButton(
-                  tooltip: 'Shuffle everything',
-                  onPressed:
-                      ref.read(appControllerProvider.notifier).shuffleAll,
-                  icon: const Icon(Icons.shuffle_rounded),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: IconButton(
-                    tooltip: 'Refresh library',
-                    onPressed: state.syncing
-                        ? null
-                        : ref.read(appControllerProvider.notifier).synchronize,
-                    icon: const Icon(Icons.refresh_rounded),
+            SliverToBoxAdapter(
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF2A2A2A), JamColors.elevated],
                   ),
                 ),
-              ],
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
-              sliver: SliverToBoxAdapter(
-                child: SearchBar(
-                  controller: _searchController,
-                  hintText: 'What do you want to play?',
-                  leading: const Icon(Icons.search_rounded),
-                  trailing: [
-                    if (_searching)
-                      IconButton(
-                        tooltip: 'Clear',
-                        onPressed: _clearSearch,
-                        icon: const Icon(Icons.close_rounded),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 30, 28, 28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              query.isEmpty
+                                  ? _greeting()
+                                  : 'Search results for “$query”',
+                              style: Theme.of(context).textTheme.headlineLarge,
+                            ),
+                          ),
+                          if (state.syncing)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 10),
+                              child: SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          IconButton(
+                            tooltip: 'Shuffle everything',
+                            onPressed: ref
+                                .read(appControllerProvider.notifier)
+                                .shuffleAll,
+                            icon: const Icon(Icons.shuffle_rounded),
+                          ),
+                          IconButton(
+                            tooltip: 'Refresh library',
+                            onPressed: state.syncing
+                                ? null
+                                : ref
+                                      .read(appControllerProvider.notifier)
+                                      .synchronize,
+                            icon: const Icon(Icons.refresh_rounded),
+                          ),
+                        ],
                       ),
-                  ],
-                  onChanged: _onQueryChanged,
+                      if (query.isEmpty) ...[
+                        const SizedBox(height: 22),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ChoiceChip(
+                              label: const Text('All'),
+                              selected: true,
+                              showCheckmark: false,
+                              onSelected: (_) {},
+                            ),
+                            ActionChip(
+                              label: const Text('Music'),
+                              onPressed: () => context.go('/browse/track'),
+                            ),
+                            ActionChip(
+                              label: const Text('Playlists'),
+                              onPressed: () => context.go('/collection'),
+                            ),
+                            ActionChip(
+                              label: const Text('Albums'),
+                              onPressed: () => context.go('/browse/album'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
-            if (_searching)
+            if (query.isNotEmpty)
               _SearchResults(results: state.searchResults)
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
                 sliver: SliverList.list(
                   children: [
                     if (state.error != null)
@@ -295,6 +294,20 @@ class _MediaSection extends ConsumerWidget {
                 final item = items[index];
                 return ArtworkCard(
                   item: item,
+                  onPlay: () async {
+                    final controller = ref.read(appControllerProvider.notifier);
+                    if (item.type == LibraryItemType.track) {
+                      await controller.play(item);
+                      return;
+                    }
+                    final children = await ref.read(
+                      childrenProvider(item.id).future,
+                    );
+                    final tracks = children
+                        .where((child) => child.type == LibraryItemType.track)
+                        .toList(growable: false);
+                    if (tracks.isNotEmpty) await controller.playQueue(tracks);
+                  },
                   onTap: () {
                     if (item.type == LibraryItemType.track) {
                       ref.read(appControllerProvider.notifier).play(item);

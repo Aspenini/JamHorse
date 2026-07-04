@@ -5,8 +5,7 @@ class ServerUriPolicy {
 
   static Uri normalize(String input) {
     final trimmed = input.trim();
-    final withScheme =
-        trimmed.contains('://') ? trimmed : 'https://$trimmed';
+    final withScheme = trimmed.contains('://') ? trimmed : 'https://$trimmed';
     final parsed = Uri.parse(withScheme);
     if (!parsed.hasScheme || parsed.host.isEmpty) {
       throw const FormatException('Enter a valid Jellyfin server address.');
@@ -14,8 +13,15 @@ class ServerUriPolicy {
     if (parsed.scheme != 'https' && parsed.scheme != 'http') {
       throw const FormatException('Only HTTP and HTTPS servers are supported.');
     }
+    if (parsed.userInfo.isNotEmpty || parsed.hasQuery || parsed.hasFragment) {
+      throw const FormatException(
+        'Server addresses cannot contain credentials, a query, or a fragment.',
+      );
+    }
     return parsed.replace(
-      path: parsed.path == '/' ? '' : parsed.path.replaceFirst(RegExp(r'/$'), ''),
+      path: parsed.path == '/'
+          ? ''
+          : parsed.path.replaceFirst(RegExp(r'/$'), ''),
       query: null,
       fragment: null,
     );
@@ -24,7 +30,7 @@ class ServerUriPolicy {
   static bool isPrivateHttp(Uri uri) {
     if (uri.scheme != 'http') return false;
     final host = uri.host.toLowerCase();
-    if (host == 'localhost' || host.endsWith('.local')) return true;
+    if (host == 'localhost') return true;
     final address = InternetAddress.tryParse(host);
     if (address == null) return false;
     if (address.isLoopback || address.isLinkLocal) return true;
@@ -39,6 +45,11 @@ class ServerUriPolicy {
   }
 
   static void validate(Uri uri, {required bool allowPrivateHttp}) {
+    if (uri.userInfo.isNotEmpty || uri.hasQuery || uri.hasFragment) {
+      throw const FormatException(
+        'Server addresses cannot contain credentials, a query, or a fragment.',
+      );
+    }
     if (uri.scheme == 'https') return;
     if (!allowPrivateHttp || !isPrivateHttp(uri)) {
       throw const FormatException(

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:jamhorse/app/theme.dart';
@@ -17,20 +15,39 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
 }
 
 class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
-  Timer? _sleepTimer;
-
-  @override
-  void dispose() {
-    _sleepTimer?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final coordinator = ref.watch(playbackCoordinatorProvider);
-    final snapshot =
+    final localSnapshot =
         ref.watch(playbackSnapshotProvider).value ??
         coordinator.currentSnapshot;
+    final bridge = ref.watch(platformMediaBridgeProvider);
+    final capabilities =
+        ref.watch(platformCapabilitiesProvider).value ?? bridge.capabilities;
+    final remote =
+        ref.watch(remotePlaybackProvider).value ?? bridge.remoteSession;
+    final remoteIndex = remote.itemId == null
+        ? -1
+        : localSnapshot.queue.items.indexWhere(
+            (item) => item.id == remote.itemId,
+          );
+    final snapshot = capabilities.castConnected
+        ? PlaybackSnapshot(
+            queue: PlaybackQueue(
+              items: localSnapshot.queue.items,
+              currentIndex: remoteIndex >= 0
+                  ? remoteIndex
+                  : localSnapshot.queue.currentIndex,
+              shuffle: localSnapshot.queue.shuffle,
+              repeatMode: localSnapshot.queue.repeatMode,
+            ),
+            position: remote.position,
+            playing: remote.playing,
+            buffering: remote.buffering,
+            volume: localSnapshot.volume,
+            sleepDeadline: localSnapshot.sleepDeadline,
+          )
+        : localSnapshot;
     final item = snapshot.queue.current;
     if (item == null) {
       return const Scaffold(
@@ -45,21 +62,35 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
         backgroundColor: Colors.transparent,
         title: const Text('Now Playing'),
         actions: [
-          IconButton(
-            tooltip: 'Output devices',
-            onPressed: ref
-                .read(platformMediaBridgeProvider)
-                .showOutputPicker,
-            icon: const Icon(Icons.speaker_group_rounded),
-          ),
+          if (capabilities.airPlay || capabilities.googleCast)
+            IconButton(
+              tooltip: capabilities.castConnected
+                  ? 'Casting — choose output'
+                  : 'Output devices',
+              onPressed: () => _showOutputs(snapshot),
+              icon: Icon(
+                capabilities.castConnected
+                    ? Icons.cast_connected_rounded
+                    : Icons.speaker_group_rounded,
+              ),
+            ),
           PopupMenuButton<int>(
-            tooltip: 'Sleep timer',
-            icon: const Icon(Icons.bedtime_outlined),
+            tooltip: snapshot.sleepDeadline == null
+                ? 'Sleep timer'
+                : 'Sleep timer active',
+            icon: Icon(
+              snapshot.sleepDeadline == null
+                  ? Icons.bedtime_outlined
+                  : Icons.bedtime_rounded,
+              color: snapshot.sleepDeadline == null
+                  ? null
+                  : JamColors.accentBright,
+            ),
             onSelected: _setSleepTimer,
             itemBuilder: (context) => const [
-              PopupMenuItem(value: 15, child: Text('Stop in 15 minutes')),
-              PopupMenuItem(value: 30, child: Text('Stop in 30 minutes')),
-              PopupMenuItem(value: 60, child: Text('Stop in 1 hour')),
+              PopupMenuItem(value: 15, child: Text('Pause in 15 minutes')),
+              PopupMenuItem(value: 30, child: Text('Pause in 30 minutes')),
+              PopupMenuItem(value: 60, child: Text('Pause in 1 hour')),
               PopupMenuItem(value: 0, child: Text('Cancel sleep timer')),
             ],
           ),
@@ -70,7 +101,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF1F3263), Color(0xFF121828), JamColors.ink],
+            colors: [Color(0xFF1F4A30), JamColors.elevated, JamColors.ink],
             stops: [0, 0.52, 1],
           ),
         ),
@@ -78,7 +109,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
           child: wide
               ? Row(
                   children: [
-                    Expanded(child: _Player(item: item, snapshot: snapshot)),
+                    Expanded(
+                      child: _Player(item: item, snapshot: snapshot),
+                    ),
                     SizedBox(
                       width: 400,
                       child: _QueueAndLyrics(
@@ -104,20 +137,100 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     );
   }
 
-  void _setSleepTimer(int minutes) {
-    _sleepTimer?.cancel();
-    if (minutes > 0) {
-      _sleepTimer = Timer(
-        Duration(minutes: minutes),
-        ref.read(playbackCoordinatorProvider).pause,
+  Future<void> _setSleepTimer(int minutes) async {
+    if (ref.read(platformMediaBridgeProvider).capabilities.castConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Disconnect Cast before setting a timer that pauses this device.',
+          ),
+        ),
       );
+      return;
     }
+    await ref
+        .read(playbackCoordinatorProvider)
+        .setSleepTimer(minutes == 0 ? null : Duration(minutes: minutes));
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           minutes == 0
               ? 'Sleep timer canceled'
-              : 'Playback will stop in $minutes minutes',
+              : 'Playback will pause in $minutes minutes',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showOutputs(PlaybackSnapshot snapshot) async {
+    final bridge = ref.read(platformMediaBridgeProvider);
+    final capabilities =
+        ref.read(platformCapabilitiesProvider).value ?? bridge.capabilities;
+    final targets = ref.read(castTargetsProvider).value ?? const <CastTarget>[];
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('Choose an output'),
+              subtitle: Text('Available routes are detected at runtime.'),
+            ),
+            if (capabilities.castConnected)
+              ListTile(
+                leading: const Icon(Icons.cast_connected_rounded),
+                title: const Text('Stop casting'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final coordinator = ref.read(playbackCoordinatorProvider);
+                  final position = bridge.remoteSession.position;
+                  await bridge.disconnectCast();
+                  await coordinator.seek(position);
+                  await coordinator.pause();
+                },
+              ),
+            if (capabilities.airPlay)
+              ListTile(
+                leading: const Icon(Icons.airplay_rounded),
+                title: const Text('AirPlay or system output'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await bridge.showOutputPicker();
+                },
+              ),
+            for (final target in targets)
+              ListTile(
+                leading: const Icon(Icons.cast_rounded),
+                title: Text(target.name),
+                subtitle: target.model == null ? null : Text(target.model!),
+                onTap: () async {
+                  final session = ref.read(appControllerProvider).session;
+                  if (session == null) return;
+                  Navigator.pop(sheetContext);
+                  try {
+                    await ref.read(playbackCoordinatorProvider).pause();
+                    await bridge.connectCastDevice(
+                      target.id,
+                      session,
+                      snapshot,
+                      ref.read(jellyfinGatewayProvider),
+                    );
+                  } catch (error) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('$error')));
+                  }
+                },
+              ),
+            if (!capabilities.airPlay && targets.isEmpty)
+              const ListTile(title: Text('No output devices found')),
+          ],
         ),
       ),
     );
@@ -138,6 +251,8 @@ class _Player extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final coordinator = ref.watch(playbackCoordinatorProvider);
+    final bridge = ref.watch(platformMediaBridgeProvider);
+    final casting = bridge.capabilities.castConnected;
     final durationMs = item.duration.inMilliseconds.toDouble();
     final value = snapshot.position.inMilliseconds
         .toDouble()
@@ -152,8 +267,8 @@ class _Player extends ConsumerWidget {
             child: AspectRatio(
               aspectRatio: 1,
               child: Hero(
-                tag: 'art-${item.serverId}-${item.id}',
-                child: Artwork(item: item, borderRadius: 26, iconSize: 80),
+                tag: 'art-${item.profileId}-${item.id}',
+                child: Artwork(item: item, borderRadius: 6, iconSize: 80),
               ),
             ),
           ),
@@ -176,9 +291,9 @@ class _Player extends ConsumerWidget {
                     item.subtitle ?? 'Unknown artist',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: JamColors.muted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleMedium?.copyWith(color: JamColors.muted),
                   ),
                 ],
               ),
@@ -200,8 +315,14 @@ class _Player extends ConsumerWidget {
         _SeekBar(
           value: value,
           max: durationMs <= 0 ? 1 : durationMs,
-          onSeek: (position) =>
-              coordinator.seek(Duration(milliseconds: position.round())),
+          onSeek: (position) {
+            final target = Duration(milliseconds: position.round());
+            if (casting) {
+              bridge.remoteSeek(target);
+            } else {
+              coordinator.seek(target);
+            }
+          },
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -219,14 +340,18 @@ class _Player extends ConsumerWidget {
           children: [
             IconButton(
               tooltip: 'Shuffle',
-              onPressed: () => coordinator.setShuffle(!snapshot.queue.shuffle),
+              onPressed: casting
+                  ? null
+                  : () => coordinator.setShuffle(!snapshot.queue.shuffle),
               color: snapshot.queue.shuffle ? JamColors.accent : null,
               icon: const Icon(Icons.shuffle_rounded),
             ),
             IconButton(
               tooltip: 'Previous',
               iconSize: 38,
-              onPressed: coordinator.skipPrevious,
+              onPressed: casting
+                  ? bridge.remotePrevious
+                  : coordinator.skipPrevious,
               icon: const Icon(Icons.skip_previous_rounded),
             ),
             IconButton.filled(
@@ -238,8 +363,8 @@ class _Player extends ConsumerWidget {
                 foregroundColor: JamColors.ink,
               ),
               onPressed: snapshot.playing
-                  ? coordinator.pause
-                  : coordinator.play,
+                  ? (casting ? bridge.remotePause : coordinator.pause)
+                  : (casting ? bridge.remotePlay : coordinator.play),
               icon: Icon(
                 snapshot.playing
                     ? Icons.pause_rounded
@@ -249,19 +374,21 @@ class _Player extends ConsumerWidget {
             IconButton(
               tooltip: 'Next',
               iconSize: 38,
-              onPressed: coordinator.skipNext,
+              onPressed: casting ? bridge.remoteNext : coordinator.skipNext,
               icon: const Icon(Icons.skip_next_rounded),
             ),
             IconButton(
               tooltip: 'Repeat',
-              onPressed: () {
-                final next = switch (snapshot.queue.repeatMode) {
-                  RepeatMode.off => RepeatMode.all,
-                  RepeatMode.all => RepeatMode.one,
-                  RepeatMode.one => RepeatMode.off,
-                };
-                coordinator.setRepeat(next);
-              },
+              onPressed: casting
+                  ? null
+                  : () {
+                      final next = switch (snapshot.queue.repeatMode) {
+                        RepeatMode.off => RepeatMode.all,
+                        RepeatMode.all => RepeatMode.one,
+                        RepeatMode.one => RepeatMode.off,
+                      };
+                      coordinator.setRepeat(next);
+                    },
               color: snapshot.queue.repeatMode == RepeatMode.off
                   ? null
                   : JamColors.accent,
@@ -337,6 +464,10 @@ class _QueueAndLyrics extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lyrics = ref.watch(lyricsProvider(item.id));
+    final casting = ref
+        .watch(platformMediaBridgeProvider)
+        .capabilities
+        .castConnected;
     final initialIndex = initialTab == 'queue' ? 1 : 0;
     return DefaultTabController(
       length: 2,
@@ -345,9 +476,8 @@ class _QueueAndLyrics extends ConsumerWidget {
         margin: EdgeInsets.all(compact ? 0 : 20),
         height: compact ? 410 : null,
         decoration: BoxDecoration(
-          color: const Color(0xAA101016),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white10),
+          color: JamColors.elevated,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
           children: [
@@ -364,8 +494,7 @@ class _QueueAndLyrics extends ConsumerWidget {
                     AsyncValue(isLoading: true) => const Center(
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                    AsyncValue(value: final lines?)
-                        when lines.isNotEmpty =>
+                    AsyncValue(value: final lines?) when lines.isNotEmpty =>
                       ListView.builder(
                         padding: const EdgeInsets.all(22),
                         itemCount: lines.length,
@@ -376,8 +505,7 @@ class _QueueAndLyrics extends ConsumerWidget {
                               line.start! <= snapshot.position &&
                               (index == lines.length - 1 ||
                                   lines[index + 1].start == null ||
-                                  lines[index + 1].start! >
-                                      snapshot.position);
+                                  lines[index + 1].start! > snapshot.position);
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 15),
                             child: Text(
@@ -392,9 +520,7 @@ class _QueueAndLyrics extends ConsumerWidget {
                           );
                         },
                       ),
-                    _ => const Center(
-                      child: Text('No lyrics on this server'),
-                    ),
+                    _ => const Center(child: Text('No lyrics on this server')),
                   },
                   ListView.builder(
                     padding: const EdgeInsets.all(10),
@@ -422,6 +548,56 @@ class _QueueAndLyrics extends ConsumerWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        onTap: casting
+                            ? null
+                            : () => ref
+                                  .read(playbackCoordinatorProvider)
+                                  .skipToIndex(index),
+                        trailing: casting
+                            ? const Tooltip(
+                                message:
+                                    'Queue editing is unavailable while casting',
+                                child: Icon(Icons.cast_connected_rounded),
+                              )
+                            : PopupMenuButton<String>(
+                                tooltip: 'Queue actions',
+                                onSelected: (action) {
+                                  final coordinator = ref.read(
+                                    playbackCoordinatorProvider,
+                                  );
+                                  switch (action) {
+                                    case 'up':
+                                      coordinator.moveQueueItem(
+                                        index,
+                                        index - 1,
+                                      );
+                                    case 'down':
+                                      coordinator.moveQueueItem(
+                                        index,
+                                        index + 1,
+                                      );
+                                    case 'remove':
+                                      coordinator.removeQueueItemAt(index);
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  if (index > 0)
+                                    const PopupMenuItem(
+                                      value: 'up',
+                                      child: Text('Move up'),
+                                    ),
+                                  if (index < snapshot.queue.items.length - 1)
+                                    const PopupMenuItem(
+                                      value: 'down',
+                                      child: Text('Move down'),
+                                    ),
+                                  if (snapshot.queue.items.length > 1)
+                                    const PopupMenuItem(
+                                      value: 'remove',
+                                      child: Text('Remove from queue'),
+                                    ),
+                                ],
+                              ),
                       );
                     },
                   ),

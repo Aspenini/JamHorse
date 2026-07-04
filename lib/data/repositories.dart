@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:jamhorse/data/database.dart' as db;
 import 'package:jamhorse/domain/contracts.dart';
@@ -16,24 +18,30 @@ class ProfileRepository {
 
   Future<void> save(AuthSession session) async {
     final profile = session.profile;
-    await _database.saveProfile(
-      db.ServerProfilesCompanion.insert(
-        id: profile.id,
-        baseUrl: profile.baseUrl.toString(),
-        name: profile.name,
-        userId: profile.userId,
-        username: profile.username,
-        deviceId: profile.deviceId,
-        serverVersion: profile.serverVersion,
-        allowPrivateHttp: Value(profile.allowPrivateHttp),
-        lastUsedAt: DateTime.now(),
-      ),
-    );
-    await _credentials.writeToken(profile.id, session.token);
+    await _credentials.writeToken(profile.profileId, session.token);
+    try {
+      await _database.saveProfile(
+        db.ServerProfilesCompanion.insert(
+          profileId: profile.profileId,
+          serverId: profile.serverId,
+          baseUrl: profile.baseUrl.toString(),
+          name: profile.name,
+          userId: profile.userId,
+          username: profile.username,
+          deviceId: profile.deviceId,
+          serverVersion: profile.serverVersion,
+          allowPrivateHttp: Value(profile.allowPrivateHttp),
+          lastUsedAt: DateTime.now(),
+        ),
+      );
+    } catch (_) {
+      await _credentials.deleteToken(profile.profileId);
+      rethrow;
+    }
   }
 
   Future<AuthSession?> restore(ServerProfile profile) async {
-    final token = await _credentials.readToken(profile.id);
+    final token = await _credentials.readToken(profile.profileId);
     return token == null ? null : AuthSession(profile: profile, token: token);
   }
 
@@ -42,9 +50,14 @@ class ProfileRepository {
     await _database.removeProfile(profileId);
   }
 
+  Future<void> signOut(String profileId) {
+    return _credentials.deleteToken(profileId);
+  }
+
   ServerProfile _mapProfile(db.ServerProfile row) {
     return ServerProfile(
-      id: row.id,
+      profileId: row.profileId,
+      serverId: row.serverId,
       baseUrl: Uri.parse(row.baseUrl),
       name: row.name,
       userId: row.userId,
@@ -63,28 +76,29 @@ class DriftLibraryRepository implements LibraryRepository {
   final JellyfinGateway _gateway;
 
   @override
-  Future<void> cacheLibrary(
-    String serverId,
-    List<LibraryItem> items,
-  ) {
+  Future<void> cacheLibrary(String profileId, List<LibraryItem> items) {
     return _database.replaceLibrary(
-      serverId,
+      profileId,
       items
           .map(
             (item) => db.CachedItemsCompanion.insert(
-              serverId: serverId,
+              profileId: profileId,
+              serverId: item.serverId,
               itemId: item.id,
               itemType: item.type.name,
               name: item.name,
               subtitle: Value(item.subtitle),
               albumId: Value(item.albumId),
+              albumName: Value(item.albumName),
               artistId: Value(item.artistId),
+              artistsJson: Value(jsonEncode(item.artists)),
               imageUrl: Value(item.imageUrl?.toString()),
               durationMs: Value(item.duration.inMilliseconds),
               indexNumber: Value(item.indexNumber),
+              discNumber: Value(item.discNumber),
               productionYear: Value(item.productionYear),
               isFavorite: Value(item.isFavorite),
-              isDownloaded: Value(item.isDownloaded),
+              hasPrimaryImage: Value(item.hasPrimaryImage),
               container: Value(item.container),
               updatedAt: DateTime.now(),
             ),
@@ -94,12 +108,13 @@ class DriftLibraryRepository implements LibraryRepository {
   }
 
   @override
-  Future<List<LibraryItem>> readCachedLibrary(String serverId) async {
-    final rows = await _database.libraryFor(serverId);
+  Future<List<LibraryItem>> readCachedLibrary(String profileId) async {
+    final rows = await _database.libraryFor(profileId);
     return rows
         .map(
           (row) => LibraryItem(
             id: row.itemId,
+            profileId: row.profileId,
             serverId: row.serverId,
             type: LibraryItemType.values.firstWhere(
               (type) => type.name == row.itemType,
@@ -108,14 +123,18 @@ class DriftLibraryRepository implements LibraryRepository {
             name: row.name,
             subtitle: row.subtitle,
             albumId: row.albumId,
+            albumName: row.albumName,
             artistId: row.artistId,
-            imageUrl:
-                row.imageUrl == null ? null : Uri.tryParse(row.imageUrl!),
+            artists: (jsonDecode(row.artistsJson) as List<dynamic>)
+                .whereType<String>()
+                .toList(growable: false),
+            imageUrl: row.imageUrl == null ? null : Uri.tryParse(row.imageUrl!),
             duration: Duration(milliseconds: row.durationMs),
             indexNumber: row.indexNumber,
+            discNumber: row.discNumber,
             productionYear: row.productionYear,
             isFavorite: row.isFavorite,
-            isDownloaded: row.isDownloaded,
+            hasPrimaryImage: row.hasPrimaryImage,
             container: row.container,
           ),
         )
@@ -123,21 +142,22 @@ class DriftLibraryRepository implements LibraryRepository {
   }
 
   @override
-  Future<List<LibraryItem>> search(
-    AuthSession session,
-    String query,
-  ) {
-    return _gateway.fetchLibrary(
-      session,
-      searchTerm: query,
-      limit: 100,
-    );
+  Future<List<LibraryItem>> search(AuthSession session, String query) {
+    return _gateway.fetchLibrary(session, searchTerm: query, limit: 100);
   }
 
   @override
-  Future<List<LibraryItem>> synchronize(AuthSession session) async {
-    final items = await _gateway.fetchLibrary(session, limit: 5000);
-    await cacheLibrary(session.profile.id, items);
+  Future<List<LibraryItem>> synchronize(
+    AuthSession session, {
+    OperationContext? context,
+  }) async {
+    final items = await _gateway.fetchLibrary(
+      session,
+      limit: 0x7fffffff,
+      context: context,
+    );
+    context?.throwIfObsolete();
+    await cacheLibrary(session.profile.profileId, items);
     return items;
   }
 }

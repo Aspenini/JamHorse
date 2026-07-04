@@ -3,8 +3,8 @@
 JamHorse uses a feature-oriented clean architecture.
 
 - `domain/` contains immutable models and interfaces with no transport details.
-- `data/` owns Jellyfin HTTP, secure credentials, Drift persistence, generated
-  API adaptation, and cache synchronization.
+- `data/` owns typed Jellyfin HTTP parsing, secure credentials, Drift
+  persistence, and cache synchronization.
 - `playback/` is the single source of truth for audio, queue, system controls,
   and Jellyfin playback reports.
 - `downloads/` owns native background transfer state.
@@ -13,29 +13,27 @@ JamHorse uses a feature-oriented clean architecture.
 - `state/` composes services through Riverpod.
 - `ui/` contains adaptive presentation only.
 
-Access tokens never enter SQLite, artwork cache keys, application logs, or
-domain objects persisted to disk. Each server has isolated cached items,
-downloads, queue state, and reports.
+Access tokens never enter SQLite, artwork cache keys, application logs, URLs,
+or domain objects persisted to disk. Each local account profile has isolated
+cached items, downloads, queue state, reports, artwork, and credentials—even
+when two accounts use the same Jellyfin server.
 
-The generated package under `packages/jellyfin_api` is pinned from the official
-Jellyfin 10.11 OpenAPI document. UI and playback code depend on
-`JellyfinGateway`, not generated DTOs. Regenerate it with:
-
-```sh
-tool/regenerate_jellyfin_api.sh
-```
+`JellyfinGateway` intentionally implements only the endpoints JamHorse uses.
+It parses those responses into domain models and paginates with bounded page
+sizes and Jellyfin's total-record count.
 
 ## Data flow
 
-1. A saved server profile and token are restored from Drift and secure storage.
+1. A saved local profile and token are restored from Drift and secure storage.
 2. Cached library data renders immediately.
 3. Foreground synchronization refreshes Jellyfin items and replaces the
-   server-scoped cache transactionally.
+   profile-scoped cache transactionally.
 4. Playback negotiates a Jellyfin universal audio URL and supplies auth through
    headers.
 5. Player state is published to Flutter and native media controls from the same
    audio handler.
-6. Playback reports are sent to Jellyfin; failures are safe to retry.
+6. Playback reports are sent to Jellyfin; failures enter a serialized,
+   profile-scoped retry queue and never block local playback.
 
 ## Security
 

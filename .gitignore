@@ -4,6 +4,7 @@
 .flutter-plugins-dependencies
 .packages
 build/
+node_modules/
 coverage/
 doc/api/
 
@@ -33,6 +34,10 @@ linux/flutter/ephemeral/
 *.mobileprovision
 *.p12
 *.cer
+ios/Flutter/Signing.xcconfig
+ios/ExportOptions.plist
+ios/Runner/CarPlay.entitlements
+macos/Flutter/Signing.xcconfig
 
 # Packaging output
 dist/

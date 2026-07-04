@@ -62,8 +62,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         decoration: const BoxDecoration(
           gradient: RadialGradient(
             center: Alignment(-0.75, -0.8),
-            radius: 1.15,
-            colors: [Color(0xFF16264D), JamColors.ink],
+            radius: 1.35,
+            colors: [Color(0xFF17472A), Color(0xFF0A1D11), JamColors.ink],
           ),
         ),
         child: SafeArea(
@@ -71,11 +71,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
+                constraints: const BoxConstraints(maxWidth: 500),
                 child: Card(
-                  color: const Color(0xE610141F),
+                  color: JamColors.elevated,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.all(30),
+                    padding: const EdgeInsets.fromLTRB(48, 42, 48, 40),
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -84,13 +87,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           const Align(child: JamHorseBrand()),
                           const SizedBox(height: 36),
                           Text(
-                            'Your music. Your server.',
+                            'Log in to JamHorse',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.headlineLarge,
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            'Connect to Jellyfin and take your library everywhere.',
+                            'Connect your Jellyfin server and keep your music yours.',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodyLarge
                                 ?.copyWith(color: JamColors.muted),
@@ -170,9 +173,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             onPressed: state.connecting ? null : _connect,
                             style: FilledButton.styleFrom(
                               minimumSize: const Size.fromHeight(54),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                              shape: const StadiumBorder(),
                             ),
                             child: state.connecting
                                 ? const SizedBox.square(

@@ -14,7 +14,7 @@ void configureLogging() {
     final line =
         '${record.time.toIso8601String()} '
         '[${record.level.name}] ${record.loggerName}: '
-        '${_redact(record.message)}';
+        '${redactForDiagnostics(record.message)}';
     _recentLines.add(line);
     if (_recentLines.length > _maxBufferedLines) _recentLines.removeAt(0);
     Zone.current.print(line);
@@ -41,11 +41,27 @@ Future<File> exportDiagnostics() async {
   return file;
 }
 
-String _redact(String value) {
+String redactForDiagnostics(String value) {
   return value
-      .replaceAll(RegExp(r'api_key=[^&\s]+', caseSensitive: false), 'api_key=…')
       .replaceAllMapped(
-        RegExp(r'(token|password)["=: ]+[^,}\s]+', caseSensitive: false),
+        RegExp(
+          r'((?:api_key|access_token|x-emby-token)=)[^&\s]+',
+          caseSensitive: false,
+        ),
+        (match) => '${match[1]}…',
+      )
+      .replaceAllMapped(
+        RegExp(
+          r'''(Authorization["']?\s*[:=]\s*)(?:Bearer|MediaBrowser)\s+[^,}\s]+''',
+          caseSensitive: false,
+        ),
+        (match) => '${match[1]}…',
+      )
+      .replaceAllMapped(
+        RegExp(
+          r'(token|password|credentials)["=: ]+[^,}\s]+',
+          caseSensitive: false,
+        ),
         (match) => '${match[1]}=…',
       );
 }

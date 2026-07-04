@@ -6,10 +6,33 @@ enum DownloadStatus { queued, downloading, paused, complete, failed }
 
 enum RepeatMode { off, all, one }
 
+class OperationContext {
+  const OperationContext({
+    required this.profileId,
+    required this.generation,
+    required this.isCurrentCallback,
+  });
+
+  final String profileId;
+  final int generation;
+  final bool Function() isCurrentCallback;
+
+  bool get isCurrent => isCurrentCallback();
+
+  void throwIfObsolete() {
+    if (!isCurrent) throw const ObsoleteOperation();
+  }
+}
+
+class ObsoleteOperation implements Exception {
+  const ObsoleteOperation();
+}
+
 @immutable
 class ServerProfile {
   const ServerProfile({
-    required this.id,
+    required this.profileId,
+    required this.serverId,
     required this.baseUrl,
     required this.name,
     required this.userId,
@@ -19,7 +42,10 @@ class ServerProfile {
     this.allowPrivateHttp = false,
   });
 
-  final String id;
+  /// Local identity for one account. Unlike [serverId], this remains unique
+  /// when multiple Jellyfin users sign into the same server.
+  final String profileId;
+  final String serverId;
   final Uri baseUrl;
   final String name;
   final String userId;
@@ -41,89 +67,66 @@ class AuthSession {
 class LibraryItem {
   const LibraryItem({
     required this.id,
+    required this.profileId,
     required this.serverId,
     required this.type,
     required this.name,
     this.subtitle,
     this.albumId,
+    this.albumName,
     this.artistId,
+    this.artists = const [],
     this.imageUrl,
     this.duration = Duration.zero,
     this.indexNumber,
+    this.discNumber,
     this.productionYear,
     this.isFavorite = false,
-    this.isDownloaded = false,
+    this.hasPrimaryImage = false,
     this.container,
   });
 
   final String id;
+  final String profileId;
   final String serverId;
   final LibraryItemType type;
   final String name;
   final String? subtitle;
   final String? albumId;
+  final String? albumName;
   final String? artistId;
+  final List<String> artists;
   final Uri? imageUrl;
   final Duration duration;
   final int? indexNumber;
+  final int? discNumber;
   final int? productionYear;
   final bool isFavorite;
-  final bool isDownloaded;
+  final bool hasPrimaryImage;
   final String? container;
 
-  LibraryItem copyWith({
-    bool? isFavorite,
-    bool? isDownloaded,
-    Uri? imageUrl,
-  }) {
+  LibraryItem copyWith({bool? isFavorite, Uri? imageUrl}) {
     return LibraryItem(
       id: id,
+      profileId: profileId,
       serverId: serverId,
       type: type,
       name: name,
       subtitle: subtitle,
       albumId: albumId,
+      albumName: albumName,
       artistId: artistId,
+      artists: artists,
       imageUrl: imageUrl ?? this.imageUrl,
       duration: duration,
       indexNumber: indexNumber,
+      discNumber: discNumber,
       productionYear: productionYear,
       isFavorite: isFavorite ?? this.isFavorite,
-      isDownloaded: isDownloaded ?? this.isDownloaded,
+      hasPrimaryImage: hasPrimaryImage,
       container: container,
     );
   }
-}
-
-@immutable
-class Track {
-  const Track(this.item);
-
-  final LibraryItem item;
-}
-
-@immutable
-class Album {
-  const Album(this.item, {this.tracks = const []});
-
-  final LibraryItem item;
-  final List<Track> tracks;
-}
-
-@immutable
-class Artist {
-  const Artist(this.item, {this.albums = const []});
-
-  final LibraryItem item;
-  final List<Album> albums;
-}
-
-@immutable
-class Playlist {
-  const Playlist(this.item, {this.tracks = const []});
-
-  final LibraryItem item;
-  final List<Track> tracks;
 }
 
 @immutable
@@ -148,10 +151,9 @@ class PlaybackQueue {
   final bool shuffle;
   final RepeatMode repeatMode;
 
-  LibraryItem? get current =>
-      currentIndex >= 0 && currentIndex < items.length
-          ? items[currentIndex]
-          : null;
+  LibraryItem? get current => currentIndex >= 0 && currentIndex < items.length
+      ? items[currentIndex]
+      : null;
 }
 
 @immutable
@@ -163,6 +165,7 @@ class PlaybackSnapshot {
     this.playing = false,
     this.buffering = false,
     this.volume = 1,
+    this.sleepDeadline,
   });
 
   final PlaybackQueue queue;
@@ -171,29 +174,32 @@ class PlaybackSnapshot {
   final bool playing;
   final bool buffering;
   final double volume;
+  final DateTime? sleepDeadline;
 }
 
 @immutable
 class DownloadRecord {
   const DownloadRecord({
     required this.id,
-    required this.serverId,
+    required this.profileId,
     required this.itemId,
     required this.status,
     this.filePath,
     this.progress = 0,
     this.sizeBytes = 0,
     this.checksum,
+    this.lastPlayedAt,
   });
 
   final String id;
-  final String serverId;
+  final String profileId;
   final String itemId;
   final DownloadStatus status;
   final String? filePath;
   final double progress;
   final int sizeBytes;
   final String? checksum;
+  final DateTime? lastPlayedAt;
 }
 
 @immutable
@@ -204,6 +210,7 @@ class PlatformCapabilities {
     required this.equalizer,
     required this.automotive,
     required this.desktopMediaKeys,
+    this.castConnected = false,
   });
 
   final bool googleCast;
@@ -211,6 +218,33 @@ class PlatformCapabilities {
   final bool equalizer;
   final bool automotive;
   final bool desktopMediaKeys;
+  final bool castConnected;
+}
+
+@immutable
+class CastTarget {
+  const CastTarget({required this.id, required this.name, this.model});
+
+  final String id;
+  final String name;
+  final String? model;
+}
+
+@immutable
+class RemotePlaybackState {
+  const RemotePlaybackState({
+    this.connected = false,
+    this.playing = false,
+    this.buffering = false,
+    this.position = Duration.zero,
+    this.itemId,
+  });
+
+  final bool connected;
+  final bool playing;
+  final bool buffering;
+  final Duration position;
+  final String? itemId;
 }
 
 @immutable
@@ -232,4 +266,17 @@ class ServerInfo {
   final String id;
   final String name;
   final String version;
+}
+
+@immutable
+class LibraryPage {
+  const LibraryPage({
+    required this.items,
+    required this.startIndex,
+    this.totalRecordCount,
+  });
+
+  final List<LibraryItem> items;
+  final int startIndex;
+  final int? totalRecordCount;
 }

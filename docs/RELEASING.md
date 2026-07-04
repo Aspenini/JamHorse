@@ -14,9 +14,18 @@
 - Windows: code-signing certificate available to `signtool`
 - Linux: optional repository/GPG signing key
 
-Without signing credentials, CI emits unsigned APK, iOS archive, DMG, Windows
-ZIP, Linux tarball, and Flatpak manifest inputs suitable for local testing.
+Protected release jobs must fail when production signing or notarization
+credentials are absent. Ordinary CI builds unsigned artifacts only for
+five-platform quality and smoke testing.
+
+A production HTTPS Cast receiver URL and registered Cast application ID are
+mandatory release inputs. HTTP Jellyfin profiles are never Cast-eligible.
 
 Apple CarPlay browsing requires a CarPlay audio-app entitlement issued by
 Apple. Normal lock-screen, Bluetooth, headset, and Now Playing integration does
 not depend on that entitlement.
+
+For an approved build, set the protected `CARPLAY_ENABLED=true` secret and use
+an entitlement-enabled provisioning profile. The release workflow then copies
+`ios/Runner/CarPlay.entitlements.example` into the signed target and enables
+CarPlay discovery at runtime. Ordinary builds compile with CarPlay hidden.

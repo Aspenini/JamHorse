@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:collection/collection.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:jamhorse/app/theme.dart';
@@ -9,7 +10,9 @@ import 'package:jamhorse/core/logging.dart';
 import 'package:jamhorse/domain/models.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/widgets/brand.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -25,6 +28,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // 0 means unlimited.
   var _storageLimitGb = 10;
   String? _downloadsPath;
+  String _version = '…';
 
   @override
   void initState() {
@@ -41,13 +45,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (!mounted) return;
       setState(() => _downloadsPath = '${dir.path}/downloads');
     });
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _version = info.version);
+    });
   }
 
   Future<void> _revealDownloads() async {
     final path = _downloadsPath;
     if (path == null) return;
     final dir = Directory(path);
-    if (!dir.existsSync()) dir.createSync(recursive: true);
+    if (!await dir.exists()) await dir.create(recursive: true);
     if (Platform.isMacOS) {
       await Process.run('open', [path]);
     } else if (Platform.isWindows) {
@@ -62,9 +69,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await ArtworkCache.clear();
     messenger.showSnackBar(
       const SnackBar(
-        content: Text(
-          'Artwork cache cleared. Images reload on next view.',
-        ),
+        content: Text('Artwork cache cleared. Images reload on next view.'),
       ),
     );
   }
@@ -79,6 +84,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() => _storageLimitGb = gigabytes);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('downloadStorageLimitGb', gigabytes);
+    await ref.read(downloadManagerProvider).enforceStorageLimit();
   }
 
   Future<void> _setStreamQuality(String value) async {
@@ -90,219 +96,273 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _exportDiagnostics() async {
     final messenger = ScaffoldMessenger.of(context);
     final file = await exportDiagnostics();
+    if (Platform.isAndroid || Platform.isIOS) {
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], subject: 'JamHorse diagnostics'),
+      );
+      return;
+    }
+    final destination = await getSaveLocation(
+      suggestedName: file.uri.pathSegments.last,
+    );
+    if (destination == null) return;
+    await file.copy(destination.path);
+    if (!mounted) return;
     if (Platform.isMacOS) {
-      // Reveal the file in Finder.
-      await Process.run('open', ['-R', file.path]);
+      await Process.run('open', ['-R', destination.path]);
     }
     messenger.showSnackBar(
-      SnackBar(content: Text('Diagnostics saved to ${file.path}')),
+      SnackBar(content: Text('Diagnostics saved to ${destination.path}')),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final capabilities = ref.watch(platformMediaBridgeProvider).capabilities;
+    final bridge = ref.watch(platformMediaBridgeProvider);
+    final capabilities =
+        ref.watch(platformCapabilitiesProvider).value ?? bridge.capabilities;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Settings',
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
-        backgroundColor: JamColors.ink,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 120),
-        children: [
-          const Center(child: JamHorseBrand()),
-          const SizedBox(height: 28),
-          _Section(
-            title: 'Servers',
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 920),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(28, 30, 28, 120),
             children: [
-              RadioGroup<String>(
-                groupValue: state.session?.profile.id,
-                onChanged: (profileId) {
-                  final profile = state.profiles
-                      .where((entry) => entry.id == profileId)
-                      .firstOrNull;
-                  if (profile != null) _switchServer(profile);
-                },
-                child: Column(
-                  children: [
-                    for (final profile in state.profiles)
-                      RadioListTile<String>(
-                        value: profile.id,
-                        title: Text(profile.name),
-                        subtitle: Text(
-                          '${profile.username} · '
-                          'Jellyfin ${profile.serverVersion}\n'
-                          '${profile.baseUrl}',
-                        ),
-                        secondary: const Icon(Icons.dns_rounded),
-                      ),
-                  ],
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.add_circle_outline_rounded),
-                title: const Text('Add another server'),
-                onTap: () => ref
-                    .read(appControllerProvider.notifier)
-                    .logout(),
-              ),
-            ],
-          ),
-          _Section(
-            title: 'Playback',
-            children: [
-              ListTile(
-                leading: const Icon(Icons.high_quality_rounded),
-                title: const Text('Streaming quality'),
-                subtitle: Text(_streamQuality),
-                trailing: DropdownButton<String>(
-                  value: _streamQuality,
-                  underline: const SizedBox.shrink(),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'Original',
-                      child: Text('Original'),
-                    ),
-                    DropdownMenuItem(value: 'High', child: Text('High')),
-                    DropdownMenuItem(value: 'Data saver', child: Text('Saver')),
-                  ],
-                  onChanged: (value) =>
-                      _setStreamQuality(value ?? 'Original'),
-                ),
-              ),
-              if (capabilities.equalizer)
-                ListTile(
-                  leading: const Icon(Icons.equalizer_rounded),
-                  title: const Text('Equalizer'),
-                  subtitle: const Text('Flat · 10 bands'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: _showEqualizer,
-                ),
-            ],
-          ),
-          _Section(
-            title: 'Downloads',
-            children: [
-              SwitchListTile.adaptive(
-                secondary: const Icon(Icons.wifi_rounded),
-                title: const Text('Download on Wi-Fi only'),
-                value: _wifiOnly,
-                onChanged: _setWifiOnly,
-              ),
-              ListTile(
-                leading: const Icon(Icons.storage_rounded),
-                title: const Text('Storage limit'),
-                subtitle: Text(
-                  _storageLimitGb == 0
-                      ? 'Unlimited'
-                      : '$_storageLimitGb GB · remove least recently '
-                            'played first',
-                ),
-                trailing: DropdownButton<int>(
-                  value: _storageLimitGb,
-                  underline: const SizedBox.shrink(),
-                  items: const [
-                    DropdownMenuItem(value: 0, child: Text('Unlimited')),
-                    DropdownMenuItem(value: 5, child: Text('5 GB')),
-                    DropdownMenuItem(value: 10, child: Text('10 GB')),
-                    DropdownMenuItem(value: 20, child: Text('20 GB')),
-                    DropdownMenuItem(value: 50, child: Text('50 GB')),
-                  ],
-                  onChanged: (value) =>
-                      _setStorageLimit(value ?? _storageLimitGb),
-                ),
-              ),
-              if (Platform.isMacOS ||
-                  Platform.isWindows ||
-                  Platform.isLinux)
-                ListTile(
-                  leading: const Icon(Icons.folder_open_rounded),
-                  title: const Text('Downloads folder'),
-                  subtitle: Text(
-                    _downloadsPath ?? 'Locating…',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  const JamHorseBrand(height: 64),
+                  const SizedBox(width: 20),
+                  Text(
+                    'Settings',
+                    style: Theme.of(context).textTheme.headlineLarge,
                   ),
-                  trailing: const Icon(Icons.open_in_new_rounded),
-                  onTap: _revealDownloads,
-                ),
+                ],
+              ),
+              const SizedBox(height: 34),
+              _Section(
+                title: 'Servers',
+                children: [
+                  RadioGroup<String>(
+                    groupValue: state.session?.profile.profileId,
+                    onChanged: (profileId) {
+                      final profile = state.profiles
+                          .where((entry) => entry.profileId == profileId)
+                          .firstOrNull;
+                      if (profile != null) _switchServer(profile);
+                    },
+                    child: Column(
+                      children: [
+                        for (final profile in state.profiles)
+                          RadioListTile<String>(
+                            value: profile.profileId,
+                            title: Text(profile.name),
+                            subtitle: Text(
+                              '${profile.username} · '
+                              'Jellyfin ${profile.serverVersion}\n'
+                              '${profile.baseUrl}',
+                            ),
+                            secondary: const Icon(Icons.dns_rounded),
+                          ),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.add_circle_outline_rounded),
+                    title: const Text('Add another server'),
+                    onTap: () => ref
+                        .read(appControllerProvider.notifier)
+                        .logout(preserveCredential: true),
+                  ),
+                ],
+              ),
+              _Section(
+                title: 'Playback',
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.high_quality_rounded),
+                    title: const Text('Streaming quality'),
+                    subtitle: Text(_streamQuality),
+                    trailing: DropdownButton<String>(
+                      value: _streamQuality,
+                      underline: const SizedBox.shrink(),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Original',
+                          child: Text('Original'),
+                        ),
+                        DropdownMenuItem(value: 'High', child: Text('High')),
+                        DropdownMenuItem(
+                          value: 'Data saver',
+                          child: Text('Saver'),
+                        ),
+                      ],
+                      onChanged: (value) =>
+                          _setStreamQuality(value ?? 'Original'),
+                    ),
+                  ),
+                  if (capabilities.equalizer)
+                    ListTile(
+                      leading: const Icon(Icons.equalizer_rounded),
+                      title: const Text('Equalizer'),
+                      subtitle: const Text('Open system audio effects'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () async {
+                        try {
+                          await bridge.showEqualizer(
+                            audioSessionId: ref
+                                .read(playbackCoordinatorProvider)
+                                .audioSessionId,
+                          );
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('$error')));
+                        }
+                      },
+                    ),
+                ],
+              ),
+              _Section(
+                title: 'Downloads',
+                children: [
+                  SwitchListTile.adaptive(
+                    secondary: const Icon(Icons.wifi_rounded),
+                    title: const Text('Download on Wi-Fi only'),
+                    value: _wifiOnly,
+                    onChanged: _setWifiOnly,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.storage_rounded),
+                    title: const Text('Storage limit'),
+                    subtitle: Text(
+                      _storageLimitGb == 0
+                          ? 'Unlimited'
+                          : '$_storageLimitGb GB · remove least recently '
+                                'played first',
+                    ),
+                    trailing: DropdownButton<int>(
+                      value: _storageLimitGb,
+                      underline: const SizedBox.shrink(),
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text('Unlimited')),
+                        DropdownMenuItem(value: 5, child: Text('5 GB')),
+                        DropdownMenuItem(value: 10, child: Text('10 GB')),
+                        DropdownMenuItem(value: 20, child: Text('20 GB')),
+                        DropdownMenuItem(value: 50, child: Text('50 GB')),
+                      ],
+                      onChanged: (value) =>
+                          _setStorageLimit(value ?? _storageLimitGb),
+                    ),
+                  ),
+                  if (Platform.isMacOS ||
+                      Platform.isWindows ||
+                      Platform.isLinux)
+                    ListTile(
+                      leading: const Icon(Icons.folder_open_rounded),
+                      title: const Text('Downloads folder'),
+                      subtitle: Text(
+                        _downloadsPath ?? 'Locating…',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: const Icon(Icons.open_in_new_rounded),
+                      onTap: _revealDownloads,
+                    ),
+                ],
+              ),
+              _Section(
+                title: 'Integrations',
+                children: [
+                  _CapabilityTile(
+                    title: 'Google Cast',
+                    enabled: capabilities.googleCast,
+                  ),
+                  _CapabilityTile(
+                    title: 'AirPlay',
+                    enabled: capabilities.airPlay,
+                  ),
+                  _CapabilityTile(
+                    title: 'Automotive controls',
+                    enabled: capabilities.automotive,
+                  ),
+                  _CapabilityTile(
+                    title: 'Desktop media keys',
+                    enabled: capabilities.desktopMediaKeys,
+                  ),
+                ],
+              ),
+              _Section(
+                title: 'Privacy & diagnostics',
+                children: [
+                  const ListTile(
+                    leading: Icon(Icons.shield_outlined),
+                    title: Text('No analytics'),
+                    subtitle: Text(
+                      'JamHorse sends playback data only to your Jellyfin server.',
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.description_outlined),
+                    title: const Text('Export redacted diagnostics'),
+                    trailing: const Icon(Icons.ios_share_rounded),
+                    onTap: _exportDiagnostics,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.gavel_rounded),
+                    title: const Text('Open-source licenses'),
+                    subtitle: const Text(
+                      'JamHorse GPLv3 and dependency notices',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => showLicensePage(
+                      context: context,
+                      applicationName: 'JamHorse',
+                      applicationVersion: _version,
+                      applicationLegalese:
+                          'Copyright © 2026 JamHorse contributors\nGPLv3',
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.cleaning_services_rounded),
+                    title: const Text('Clear artwork cache'),
+                    subtitle: const Text(
+                      'Cached covers make browsing instant and work offline; '
+                      'clear to free space or fix stale images.',
+                    ),
+                    onTap: _clearArtworkCache,
+                  ),
+                ],
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _logout(forget: false),
+                icon: const Icon(Icons.logout_rounded),
+                label: const Text('Sign out'),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () => _logout(forget: true),
+                child: const Text('Forget this server'),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'JamHorse $_version · GPLv3\nIndependent Jellyfin music client',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: JamColors.muted, fontSize: 12),
+              ),
             ],
           ),
-          _Section(
-            title: 'Integrations',
-            children: [
-              _CapabilityTile(
-                title: 'Google Cast',
-                enabled: capabilities.googleCast,
-              ),
-              _CapabilityTile(
-                title: 'AirPlay',
-                enabled: capabilities.airPlay,
-              ),
-              _CapabilityTile(
-                title: 'Automotive controls',
-                enabled: capabilities.automotive,
-              ),
-              _CapabilityTile(
-                title: 'Desktop media keys',
-                enabled: capabilities.desktopMediaKeys,
-              ),
-            ],
-          ),
-          _Section(
-            title: 'Privacy & diagnostics',
-            children: [
-              const ListTile(
-                leading: Icon(Icons.shield_outlined),
-                title: Text('No analytics'),
-                subtitle: Text(
-                  'JamHorse sends playback data only to your Jellyfin server.',
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.description_outlined),
-                title: const Text('Export redacted diagnostics'),
-                trailing: const Icon(Icons.ios_share_rounded),
-                onTap: _exportDiagnostics,
-              ),
-              ListTile(
-                leading: const Icon(Icons.cleaning_services_rounded),
-                title: const Text('Clear artwork cache'),
-                subtitle: const Text(
-                  'Cached covers make browsing instant and work offline; '
-                  'clear to free space or fix stale images.',
-                ),
-                onTap: _clearArtworkCache,
-              ),
-            ],
-          ),
-          OutlinedButton.icon(
-            onPressed: () => _logout(forget: false),
-            icon: const Icon(Icons.logout_rounded),
-            label: const Text('Sign out'),
-          ),
-          const SizedBox(height: 10),
-          TextButton(
-            onPressed: () => _logout(forget: true),
-            child: const Text('Forget this server'),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'JamHorse 1.0.0 · GPLv3\nIndependent Jellyfin music client',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: JamColors.muted, fontSize: 12),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Future<void> _switchServer(ServerProfile profile) async {
-    final playing = ref.read(playbackCoordinatorProvider).currentSnapshot.playing;
+    final playing = ref
+        .read(playbackCoordinatorProvider)
+        .currentSnapshot
+        .playing;
     if (playing) {
       final proceed = await showDialog<bool>(
         context: context,
@@ -326,60 +386,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await ref.read(appControllerProvider.notifier).switchProfile(profile);
   }
 
-  void _showEqualizer() {
-    final values = List.filled(10, 0.0);
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Equalizer',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  height: 220,
-                  child: Row(
-                    children: [
-                      for (var index = 0; index < values.length; index++)
-                        Expanded(
-                          child: RotatedBox(
-                            quarterTurns: 3,
-                            child: Slider(
-                              value: values[index],
-                              min: -12,
-                              max: 12,
-                              onChanged: (value) {
-                                setModalState(() => values[index] = value);
-                                ref
-                                    .read(platformMediaBridgeProvider)
-                                    .applyEqualizer(values);
-                              },
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const Text('60  120  250  500  1k  2k  4k  8k  12k  16k'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _logout({required bool forget}) async {
-    await ref
-        .read(appControllerProvider.notifier)
-        .logout(forgetServer: forget);
+    await ref.read(appControllerProvider.notifier).logout(forgetServer: forget);
   }
 }
 
@@ -408,7 +416,11 @@ class _Section extends StatelessWidget {
               ),
             ),
           ),
-          Card(
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: JamColors.soft,
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Column(children: children),
           ),
         ],

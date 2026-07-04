@@ -14,18 +14,6 @@ class JamHorseApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: buildJamHorseTheme(),
       routerConfig: router,
-      builder: (context, child) {
-        final media = MediaQuery.of(context);
-        return MediaQuery(
-          data: media.copyWith(
-            textScaler: media.textScaler.clamp(
-              minScaleFactor: 0.85,
-              maxScaleFactor: 2,
-            ),
-          ),
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
     );
   }
 }

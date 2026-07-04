@@ -13,17 +13,19 @@ import 'package:uuid/uuid.dart';
 
 class JamHorseDownloadManager implements DownloadManager {
   JamHorseDownloadManager(this._gateway, this._database) {
-    _updates = bg.FileDownloader().updates.listen(_handleUpdate);
-    _ready = _restore();
+    _ready = _initialize();
   }
 
   final JellyfinGateway _gateway;
   final db.AppDatabase _database;
+  final bg.FileDownloader _downloader = bg.FileDownloader();
   final _controller = StreamController<List<DownloadRecord>>.broadcast();
   final _records = <String, DownloadRecord>{};
   final _tasks = <String, bg.DownloadTask>{};
   late final StreamSubscription<bg.TaskUpdate> _updates;
   late final Future<void> _ready;
+  Future<void> _updateSerial = Future.value();
+  final _lastProgressPersist = <String, DateTime>{};
 
   @override
   Stream<List<DownloadRecord>> get records {
@@ -32,20 +34,23 @@ class JamHorseDownloadManager implements DownloadManager {
     return _controller.stream;
   }
 
-  /// Loads persisted records so the Downloads screen survives restarts.
-  Future<void> _restore() async {
+  /// Initializes the native downloader before subscribing, then reconciles
+  /// native tasks, database rows, and files.
+  Future<void> _initialize() async {
+    await _downloader.start();
+    _updates = _downloader.updates.listen((update) {
+      _updateSerial = _updateSerial
+          .catchError((Object error, StackTrace stack) {
+            appLog.warning('Download update failed', error, stack);
+          })
+          .then((_) => _handleUpdate(update));
+    });
     final rows = await _database.allDownloads();
     for (final row in rows) {
-      var status = DownloadStatus.values.firstWhere(
+      final status = DownloadStatus.values.firstWhere(
         (value) => value.name == row.status,
         orElse: () => DownloadStatus.failed,
       );
-      // Anything that was mid-flight when the app quit is either picked up
-      // again by resumeFromBackground or needs a fresh enqueue.
-      if (status == DownloadStatus.downloading ||
-          status == DownloadStatus.queued) {
-        status = DownloadStatus.paused;
-      }
       if (status == DownloadStatus.complete &&
           (row.filePath == null || !File(row.filePath!).existsSync())) {
         // The file is gone (evicted or removed externally); drop the row.
@@ -54,16 +59,38 @@ class JamHorseDownloadManager implements DownloadManager {
       }
       _records[row.id] = DownloadRecord(
         id: row.id,
-        serverId: row.serverId,
+        profileId: row.profileId,
         itemId: row.itemId,
         status: status,
         filePath: row.filePath,
         progress: status == DownloadStatus.complete ? 1 : row.progress,
         sizeBytes: row.sizeBytes,
         checksum: row.checksum,
+        lastPlayedAt: row.lastPlayedAt,
       );
     }
-    await bg.FileDownloader().resumeFromBackground();
+    final tasks = await _downloader.allTasks(allGroups: true);
+    for (final task in tasks.whereType<bg.DownloadTask>()) {
+      if (_records.containsKey(task.taskId)) {
+        _tasks[task.taskId] = task;
+      } else {
+        // A native task without a database owner can leak credentials and
+        // partial files, so cancel and remove it during startup reconciliation.
+        await _downloader.cancelTaskWithId(task.taskId);
+        final path = await task.filePath();
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      }
+    }
+    for (final entry in _records.entries.toList()) {
+      final record = entry.value;
+      if ((record.status == DownloadStatus.downloading ||
+              record.status == DownloadStatus.queued) &&
+          !_tasks.containsKey(record.id)) {
+        _records[record.id] = record.copyWith(status: DownloadStatus.paused);
+        await _persist(_records[record.id]!);
+      }
+    }
     _emit();
   }
 
@@ -78,38 +105,37 @@ class JamHorseDownloadManager implements DownloadManager {
     final existing = _records.values.firstWhereOrNull(
       (record) =>
           record.itemId == item.id &&
-          record.serverId == session.profile.id &&
+          record.profileId == session.profile.profileId &&
           record.status != DownloadStatus.failed,
     );
     if (existing != null) return;
     final id = const Uuid().v4();
-    final extension =
-        (item.container?.split(',').firstOrNull ?? 'm4a').toLowerCase();
+    final extension = _safeExtension(item.container);
     final task = bg.DownloadTask(
       taskId: id,
       url: _gateway.streamUri(session, item).toString(),
       headers: _gateway.playbackHeaders(session),
       filename: '${item.id}.$extension',
-      directory: 'downloads/${session.profile.id}',
+      directory: 'downloads/${session.profile.profileId}',
       baseDirectory: bg.BaseDirectory.applicationSupport,
-      group: session.profile.id,
+      group: session.profile.profileId,
       updates: bg.Updates.statusAndProgress,
       requiresWiFi: wifiOnly,
       retries: 3,
       allowPause: true,
       displayName: item.name,
-      metaData: '${session.profile.id}|${item.id}',
+      metaData: '${session.profile.profileId}|${item.id}',
     );
     _tasks[id] = task;
     _records[id] = DownloadRecord(
       id: id,
-      serverId: session.profile.id,
+      profileId: session.profile.profileId,
       itemId: item.id,
       status: DownloadStatus.queued,
     );
     await _persist(_records[id]!);
     _emit();
-    final accepted = await bg.FileDownloader().enqueue(task);
+    final accepted = await _downloader.enqueue(task);
     if (!accepted) {
       _records[id] = _records[id]!.copyWith(status: DownloadStatus.failed);
       await _persist(_records[id]!);
@@ -119,16 +145,22 @@ class JamHorseDownloadManager implements DownloadManager {
 
   @override
   Future<void> pause(String downloadId) async {
-    final task = _tasks[downloadId];
+    final persisted = await _downloader.taskForId(downloadId);
+    final task =
+        _tasks[downloadId] ?? (persisted is bg.DownloadTask ? persisted : null);
     if (task == null) return;
-    await bg.FileDownloader().pause(task);
+    _tasks[downloadId] = task;
+    await _downloader.pause(task);
   }
 
   @override
   Future<void> resume(String downloadId) async {
-    final task = _tasks[downloadId];
+    final persisted = await _downloader.taskForId(downloadId);
+    final task =
+        _tasks[downloadId] ?? (persisted is bg.DownloadTask ? persisted : null);
     if (task != null) {
-      await bg.FileDownloader().resume(task);
+      _tasks[downloadId] = task;
+      await _downloader.resume(task);
       return;
     }
     // Restored from a previous session: the platform task is gone, so mark
@@ -143,17 +175,14 @@ class JamHorseDownloadManager implements DownloadManager {
 
   @override
   Future<void> cancel(String downloadId) async {
-    final task = _tasks.remove(downloadId);
-    if (task != null) await bg.FileDownloader().cancel(task);
-    _records.remove(downloadId);
-    await _database.deleteDownload(downloadId);
-    _emit();
+    await delete(downloadId);
   }
 
   @override
   Future<void> delete(String downloadId) async {
     final record = _records.remove(downloadId);
     final task = _tasks.remove(downloadId);
+    await _downloader.cancelTaskWithId(downloadId);
     final path = record?.filePath ?? (await task?.filePath());
     if (path != null) {
       final file = File(path);
@@ -166,8 +195,46 @@ class JamHorseDownloadManager implements DownloadManager {
   @override
   Future<void> reconcile() async {
     await _ready;
-    await bg.FileDownloader().resumeFromBackground();
+    await _downloader.resumeFromBackground();
     _emit();
+  }
+
+  @override
+  Future<void> retry(
+    String downloadId,
+    AuthSession session,
+    LibraryItem item,
+  ) async {
+    await delete(downloadId);
+    await enqueue(session, item);
+  }
+
+  @override
+  Future<void> purgeProfile(String profileId) async {
+    await _ready;
+    await _downloader.cancelAll(group: profileId);
+    final ids = _records.values
+        .where((record) => record.profileId == profileId)
+        .map((record) => record.id)
+        .toList(growable: false);
+    for (final id in ids) {
+      await delete(id);
+    }
+  }
+
+  @override
+  Future<void> markPlayed(String profileId, String itemId) async {
+    await _database.markDownloadPlayed(profileId, itemId);
+    final match = _records.values.firstWhereOrNull(
+      (record) =>
+          record.profileId == profileId &&
+          record.itemId == itemId &&
+          record.status == DownloadStatus.complete,
+    );
+    if (match != null) {
+      _records[match.id] = match.copyWith(lastPlayedAt: DateTime.now());
+      _emit();
+    }
   }
 
   Future<void> _handleUpdate(bg.TaskUpdate update) async {
@@ -178,6 +245,12 @@ class JamHorseDownloadManager implements DownloadManager {
         progress: update.progress.clamp(0, 1),
         sizeBytes: update.hasExpectedFileSize ? update.expectedFileSize : null,
       );
+      final now = DateTime.now();
+      final last = _lastProgressPersist[record.id];
+      if (last == null || now.difference(last) >= const Duration(seconds: 1)) {
+        _lastProgressPersist[record.id] = now;
+        await _persist(_records[record.id]!);
+      }
     } else if (update case bg.TaskStatusUpdate()) {
       final status = switch (update.status) {
         bg.TaskStatus.enqueued ||
@@ -204,7 +277,7 @@ class JamHorseDownloadManager implements DownloadManager {
       );
       await _persist(_records[record.id]!);
       if (status == DownloadStatus.complete) {
-        await _enforceStorageLimit();
+        await enforceStorageLimit();
       }
     }
     _emit();
@@ -212,7 +285,8 @@ class JamHorseDownloadManager implements DownloadManager {
 
   /// Deletes the oldest completed downloads until total size fits the
   /// configured limit. 0 means unlimited.
-  Future<void> _enforceStorageLimit() async {
+  @override
+  Future<void> enforceStorageLimit() async {
     final prefs = await SharedPreferences.getInstance();
     final limitGb = prefs.getInt('downloadStorageLimitGb') ?? 10;
     if (limitGb <= 0) return;
@@ -241,13 +315,14 @@ class JamHorseDownloadManager implements DownloadManager {
     return _database.upsertDownload(
       db.DownloadEntriesCompanion.insert(
         id: record.id,
-        serverId: record.serverId,
+        profileId: record.profileId,
         itemId: record.itemId,
         status: record.status.name,
         filePath: Value(record.filePath),
         progress: Value(record.progress),
         sizeBytes: Value(record.sizeBytes),
         checksum: Value(record.checksum),
+        lastPlayedAt: Value(record.lastPlayedAt),
         updatedAt: DateTime.now(),
       ),
     );
@@ -259,9 +334,18 @@ class JamHorseDownloadManager implements DownloadManager {
   }
 
   Future<void> dispose() async {
+    await _ready;
+    await _updateSerial;
     await _updates.cancel();
     await _controller.close();
   }
+}
+
+String _safeExtension(String? container) {
+  final candidate = (container?.split(',').firstOrNull ?? 'm4a')
+      .toLowerCase()
+      .trim();
+  return RegExp(r'^[a-z0-9]{1,8}$').hasMatch(candidate) ? candidate : 'm4a';
 }
 
 extension on DownloadRecord {
@@ -270,16 +354,18 @@ extension on DownloadRecord {
     String? filePath,
     double? progress,
     int? sizeBytes,
+    DateTime? lastPlayedAt,
   }) {
     return DownloadRecord(
       id: id,
-      serverId: serverId,
+      profileId: profileId,
       itemId: itemId,
       status: status ?? this.status,
       filePath: filePath ?? this.filePath,
       progress: progress ?? this.progress,
       sizeBytes: sizeBytes ?? this.sizeBytes,
       checksum: checksum,
+      lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
     );
   }
 }

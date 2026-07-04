@@ -14,7 +14,7 @@ class JamHorseBrand extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(height * 0.22),
         child: Image.asset(
-          'assets/branding/jamhorse_icon_master.png',
+          'assets/icons-output/web/icon-512.png',
           height: height,
           width: height,
           fit: BoxFit.cover,

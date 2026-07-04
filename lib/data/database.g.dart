@@ -9,10 +9,23 @@ class $ServerProfilesTable extends ServerProfiles
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $ServerProfilesTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
   @override
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _serverIdMeta = const VerificationMeta(
+    'serverId',
+  );
+  @override
+  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
+    'server_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
@@ -108,7 +121,8 @@ class $ServerProfilesTable extends ServerProfiles
   );
   @override
   List<GeneratedColumn> get $columns => [
-    id,
+    profileId,
+    serverId,
     baseUrl,
     name,
     userId,
@@ -130,10 +144,21 @@ class $ServerProfilesTable extends ServerProfiles
   }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
     } else if (isInserting) {
-      context.missing(_idMeta);
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(
+        _serverIdMeta,
+        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_serverIdMeta);
     }
     if (data.containsKey('base_url')) {
       context.handle(
@@ -210,14 +235,18 @@ class $ServerProfilesTable extends ServerProfiles
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {id};
+  Set<GeneratedColumn> get $primaryKey => {profileId};
   @override
   ServerProfile map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return ServerProfile(
-      id: attachedDatabase.typeMapping.read(
+      profileId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}id'],
+        data['${effectivePrefix}profile_id'],
+      )!,
+      serverId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_id'],
       )!,
       baseUrl: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -261,7 +290,8 @@ class $ServerProfilesTable extends ServerProfiles
 }
 
 class ServerProfile extends DataClass implements Insertable<ServerProfile> {
-  final String id;
+  final String profileId;
+  final String serverId;
   final String baseUrl;
   final String name;
   final String userId;
@@ -271,7 +301,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
   final bool allowPrivateHttp;
   final DateTime lastUsedAt;
   const ServerProfile({
-    required this.id,
+    required this.profileId,
+    required this.serverId,
     required this.baseUrl,
     required this.name,
     required this.userId,
@@ -284,7 +315,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
+    map['profile_id'] = Variable<String>(profileId);
+    map['server_id'] = Variable<String>(serverId);
     map['base_url'] = Variable<String>(baseUrl);
     map['name'] = Variable<String>(name);
     map['user_id'] = Variable<String>(userId);
@@ -298,7 +330,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
 
   ServerProfilesCompanion toCompanion(bool nullToAbsent) {
     return ServerProfilesCompanion(
-      id: Value(id),
+      profileId: Value(profileId),
+      serverId: Value(serverId),
       baseUrl: Value(baseUrl),
       name: Value(name),
       userId: Value(userId),
@@ -316,7 +349,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return ServerProfile(
-      id: serializer.fromJson<String>(json['id']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      serverId: serializer.fromJson<String>(json['serverId']),
       baseUrl: serializer.fromJson<String>(json['baseUrl']),
       name: serializer.fromJson<String>(json['name']),
       userId: serializer.fromJson<String>(json['userId']),
@@ -331,7 +365,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
+      'profileId': serializer.toJson<String>(profileId),
+      'serverId': serializer.toJson<String>(serverId),
       'baseUrl': serializer.toJson<String>(baseUrl),
       'name': serializer.toJson<String>(name),
       'userId': serializer.toJson<String>(userId),
@@ -344,7 +379,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
   }
 
   ServerProfile copyWith({
-    String? id,
+    String? profileId,
+    String? serverId,
     String? baseUrl,
     String? name,
     String? userId,
@@ -354,7 +390,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
     bool? allowPrivateHttp,
     DateTime? lastUsedAt,
   }) => ServerProfile(
-    id: id ?? this.id,
+    profileId: profileId ?? this.profileId,
+    serverId: serverId ?? this.serverId,
     baseUrl: baseUrl ?? this.baseUrl,
     name: name ?? this.name,
     userId: userId ?? this.userId,
@@ -366,7 +403,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
   );
   ServerProfile copyWithCompanion(ServerProfilesCompanion data) {
     return ServerProfile(
-      id: data.id.present ? data.id.value : this.id,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
       baseUrl: data.baseUrl.present ? data.baseUrl.value : this.baseUrl,
       name: data.name.present ? data.name.value : this.name,
       userId: data.userId.present ? data.userId.value : this.userId,
@@ -387,7 +425,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
   @override
   String toString() {
     return (StringBuffer('ServerProfile(')
-          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('serverId: $serverId, ')
           ..write('baseUrl: $baseUrl, ')
           ..write('name: $name, ')
           ..write('userId: $userId, ')
@@ -402,7 +441,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
 
   @override
   int get hashCode => Object.hash(
-    id,
+    profileId,
+    serverId,
     baseUrl,
     name,
     userId,
@@ -416,7 +456,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ServerProfile &&
-          other.id == this.id &&
+          other.profileId == this.profileId &&
+          other.serverId == this.serverId &&
           other.baseUrl == this.baseUrl &&
           other.name == this.name &&
           other.userId == this.userId &&
@@ -428,7 +469,8 @@ class ServerProfile extends DataClass implements Insertable<ServerProfile> {
 }
 
 class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
-  final Value<String> id;
+  final Value<String> profileId;
+  final Value<String> serverId;
   final Value<String> baseUrl;
   final Value<String> name;
   final Value<String> userId;
@@ -439,7 +481,8 @@ class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
   final Value<DateTime> lastUsedAt;
   final Value<int> rowid;
   const ServerProfilesCompanion({
-    this.id = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.serverId = const Value.absent(),
     this.baseUrl = const Value.absent(),
     this.name = const Value.absent(),
     this.userId = const Value.absent(),
@@ -451,7 +494,8 @@ class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
     this.rowid = const Value.absent(),
   });
   ServerProfilesCompanion.insert({
-    required String id,
+    required String profileId,
+    required String serverId,
     required String baseUrl,
     required String name,
     required String userId,
@@ -461,7 +505,8 @@ class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
     this.allowPrivateHttp = const Value.absent(),
     required DateTime lastUsedAt,
     this.rowid = const Value.absent(),
-  }) : id = Value(id),
+  }) : profileId = Value(profileId),
+       serverId = Value(serverId),
        baseUrl = Value(baseUrl),
        name = Value(name),
        userId = Value(userId),
@@ -470,7 +515,8 @@ class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
        serverVersion = Value(serverVersion),
        lastUsedAt = Value(lastUsedAt);
   static Insertable<ServerProfile> custom({
-    Expression<String>? id,
+    Expression<String>? profileId,
+    Expression<String>? serverId,
     Expression<String>? baseUrl,
     Expression<String>? name,
     Expression<String>? userId,
@@ -482,7 +528,8 @@ class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
-      if (id != null) 'id': id,
+      if (profileId != null) 'profile_id': profileId,
+      if (serverId != null) 'server_id': serverId,
       if (baseUrl != null) 'base_url': baseUrl,
       if (name != null) 'name': name,
       if (userId != null) 'user_id': userId,
@@ -496,7 +543,8 @@ class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
   }
 
   ServerProfilesCompanion copyWith({
-    Value<String>? id,
+    Value<String>? profileId,
+    Value<String>? serverId,
     Value<String>? baseUrl,
     Value<String>? name,
     Value<String>? userId,
@@ -508,7 +556,8 @@ class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
     Value<int>? rowid,
   }) {
     return ServerProfilesCompanion(
-      id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
+      serverId: serverId ?? this.serverId,
       baseUrl: baseUrl ?? this.baseUrl,
       name: name ?? this.name,
       userId: userId ?? this.userId,
@@ -524,8 +573,11 @@ class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (serverId.present) {
+      map['server_id'] = Variable<String>(serverId.value);
     }
     if (baseUrl.present) {
       map['base_url'] = Variable<String>(baseUrl.value);
@@ -560,7 +612,8 @@ class ServerProfilesCompanion extends UpdateCompanion<ServerProfile> {
   @override
   String toString() {
     return (StringBuffer('ServerProfilesCompanion(')
-          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('serverId: $serverId, ')
           ..write('baseUrl: $baseUrl, ')
           ..write('name: $name, ')
           ..write('userId: $userId, ')
@@ -581,6 +634,17 @@ class $CachedItemsTable extends CachedItems
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $CachedItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _serverIdMeta = const VerificationMeta(
     'serverId',
   );
@@ -643,6 +707,17 @@ class $CachedItemsTable extends CachedItems
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _albumNameMeta = const VerificationMeta(
+    'albumName',
+  );
+  @override
+  late final GeneratedColumn<String> albumName = GeneratedColumn<String>(
+    'album_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _artistIdMeta = const VerificationMeta(
     'artistId',
   );
@@ -653,6 +728,18 @@ class $CachedItemsTable extends CachedItems
     true,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
+  );
+  static const VerificationMeta _artistsJsonMeta = const VerificationMeta(
+    'artistsJson',
+  );
+  @override
+  late final GeneratedColumn<String> artistsJson = GeneratedColumn<String>(
+    'artists_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
   );
   static const VerificationMeta _imageUrlMeta = const VerificationMeta(
     'imageUrl',
@@ -688,6 +775,17 @@ class $CachedItemsTable extends CachedItems
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _discNumberMeta = const VerificationMeta(
+    'discNumber',
+  );
+  @override
+  late final GeneratedColumn<int> discNumber = GeneratedColumn<int>(
+    'disc_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _productionYearMeta = const VerificationMeta(
     'productionYear',
   );
@@ -714,18 +812,18 @@ class $CachedItemsTable extends CachedItems
     ),
     defaultValue: const Constant(false),
   );
-  static const VerificationMeta _isDownloadedMeta = const VerificationMeta(
-    'isDownloaded',
+  static const VerificationMeta _hasPrimaryImageMeta = const VerificationMeta(
+    'hasPrimaryImage',
   );
   @override
-  late final GeneratedColumn<bool> isDownloaded = GeneratedColumn<bool>(
-    'is_downloaded',
+  late final GeneratedColumn<bool> hasPrimaryImage = GeneratedColumn<bool>(
+    'has_primary_image',
     aliasedName,
     false,
     type: DriftSqlType.bool,
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("is_downloaded" IN (0, 1))',
+      'CHECK ("has_primary_image" IN (0, 1))',
     ),
     defaultValue: const Constant(false),
   );
@@ -753,19 +851,23 @@ class $CachedItemsTable extends CachedItems
   );
   @override
   List<GeneratedColumn> get $columns => [
+    profileId,
     serverId,
     itemId,
     itemType,
     name,
     subtitle,
     albumId,
+    albumName,
     artistId,
+    artistsJson,
     imageUrl,
     durationMs,
     indexNumber,
+    discNumber,
     productionYear,
     isFavorite,
-    isDownloaded,
+    hasPrimaryImage,
     container,
     updatedAt,
   ];
@@ -781,6 +883,14 @@ class $CachedItemsTable extends CachedItems
   }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
     if (data.containsKey('server_id')) {
       context.handle(
         _serverIdMeta,
@@ -825,10 +935,25 @@ class $CachedItemsTable extends CachedItems
         albumId.isAcceptableOrUnknown(data['album_id']!, _albumIdMeta),
       );
     }
+    if (data.containsKey('album_name')) {
+      context.handle(
+        _albumNameMeta,
+        albumName.isAcceptableOrUnknown(data['album_name']!, _albumNameMeta),
+      );
+    }
     if (data.containsKey('artist_id')) {
       context.handle(
         _artistIdMeta,
         artistId.isAcceptableOrUnknown(data['artist_id']!, _artistIdMeta),
+      );
+    }
+    if (data.containsKey('artists_json')) {
+      context.handle(
+        _artistsJsonMeta,
+        artistsJson.isAcceptableOrUnknown(
+          data['artists_json']!,
+          _artistsJsonMeta,
+        ),
       );
     }
     if (data.containsKey('image_url')) {
@@ -852,6 +977,12 @@ class $CachedItemsTable extends CachedItems
         ),
       );
     }
+    if (data.containsKey('disc_number')) {
+      context.handle(
+        _discNumberMeta,
+        discNumber.isAcceptableOrUnknown(data['disc_number']!, _discNumberMeta),
+      );
+    }
     if (data.containsKey('production_year')) {
       context.handle(
         _productionYearMeta,
@@ -867,12 +998,12 @@ class $CachedItemsTable extends CachedItems
         isFavorite.isAcceptableOrUnknown(data['is_favorite']!, _isFavoriteMeta),
       );
     }
-    if (data.containsKey('is_downloaded')) {
+    if (data.containsKey('has_primary_image')) {
       context.handle(
-        _isDownloadedMeta,
-        isDownloaded.isAcceptableOrUnknown(
-          data['is_downloaded']!,
-          _isDownloadedMeta,
+        _hasPrimaryImageMeta,
+        hasPrimaryImage.isAcceptableOrUnknown(
+          data['has_primary_image']!,
+          _hasPrimaryImageMeta,
         ),
       );
     }
@@ -894,11 +1025,15 @@ class $CachedItemsTable extends CachedItems
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {serverId, itemId};
+  Set<GeneratedColumn> get $primaryKey => {profileId, itemId};
   @override
   CachedItem map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return CachedItem(
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
       serverId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}server_id'],
@@ -923,10 +1058,18 @@ class $CachedItemsTable extends CachedItems
         DriftSqlType.string,
         data['${effectivePrefix}album_id'],
       ),
+      albumName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}album_name'],
+      ),
       artistId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}artist_id'],
       ),
+      artistsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}artists_json'],
+      )!,
       imageUrl: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}image_url'],
@@ -939,6 +1082,10 @@ class $CachedItemsTable extends CachedItems
         DriftSqlType.int,
         data['${effectivePrefix}index_number'],
       ),
+      discNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}disc_number'],
+      ),
       productionYear: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}production_year'],
@@ -947,9 +1094,9 @@ class $CachedItemsTable extends CachedItems
         DriftSqlType.bool,
         data['${effectivePrefix}is_favorite'],
       )!,
-      isDownloaded: attachedDatabase.typeMapping.read(
+      hasPrimaryImage: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
-        data['${effectivePrefix}is_downloaded'],
+        data['${effectivePrefix}has_primary_image'],
       )!,
       container: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -969,41 +1116,50 @@ class $CachedItemsTable extends CachedItems
 }
 
 class CachedItem extends DataClass implements Insertable<CachedItem> {
+  final String profileId;
   final String serverId;
   final String itemId;
   final String itemType;
   final String name;
   final String? subtitle;
   final String? albumId;
+  final String? albumName;
   final String? artistId;
+  final String artistsJson;
   final String? imageUrl;
   final int durationMs;
   final int? indexNumber;
+  final int? discNumber;
   final int? productionYear;
   final bool isFavorite;
-  final bool isDownloaded;
+  final bool hasPrimaryImage;
   final String? container;
   final DateTime updatedAt;
   const CachedItem({
+    required this.profileId,
     required this.serverId,
     required this.itemId,
     required this.itemType,
     required this.name,
     this.subtitle,
     this.albumId,
+    this.albumName,
     this.artistId,
+    required this.artistsJson,
     this.imageUrl,
     required this.durationMs,
     this.indexNumber,
+    this.discNumber,
     this.productionYear,
     required this.isFavorite,
-    required this.isDownloaded,
+    required this.hasPrimaryImage,
     this.container,
     required this.updatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    map['profile_id'] = Variable<String>(profileId);
     map['server_id'] = Variable<String>(serverId);
     map['item_id'] = Variable<String>(itemId);
     map['item_type'] = Variable<String>(itemType);
@@ -1014,9 +1170,13 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
     if (!nullToAbsent || albumId != null) {
       map['album_id'] = Variable<String>(albumId);
     }
+    if (!nullToAbsent || albumName != null) {
+      map['album_name'] = Variable<String>(albumName);
+    }
     if (!nullToAbsent || artistId != null) {
       map['artist_id'] = Variable<String>(artistId);
     }
+    map['artists_json'] = Variable<String>(artistsJson);
     if (!nullToAbsent || imageUrl != null) {
       map['image_url'] = Variable<String>(imageUrl);
     }
@@ -1024,11 +1184,14 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
     if (!nullToAbsent || indexNumber != null) {
       map['index_number'] = Variable<int>(indexNumber);
     }
+    if (!nullToAbsent || discNumber != null) {
+      map['disc_number'] = Variable<int>(discNumber);
+    }
     if (!nullToAbsent || productionYear != null) {
       map['production_year'] = Variable<int>(productionYear);
     }
     map['is_favorite'] = Variable<bool>(isFavorite);
-    map['is_downloaded'] = Variable<bool>(isDownloaded);
+    map['has_primary_image'] = Variable<bool>(hasPrimaryImage);
     if (!nullToAbsent || container != null) {
       map['container'] = Variable<String>(container);
     }
@@ -1038,6 +1201,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
 
   CachedItemsCompanion toCompanion(bool nullToAbsent) {
     return CachedItemsCompanion(
+      profileId: Value(profileId),
       serverId: Value(serverId),
       itemId: Value(itemId),
       itemType: Value(itemType),
@@ -1048,9 +1212,13 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
       albumId: albumId == null && nullToAbsent
           ? const Value.absent()
           : Value(albumId),
+      albumName: albumName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(albumName),
       artistId: artistId == null && nullToAbsent
           ? const Value.absent()
           : Value(artistId),
+      artistsJson: Value(artistsJson),
       imageUrl: imageUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(imageUrl),
@@ -1058,11 +1226,14 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
       indexNumber: indexNumber == null && nullToAbsent
           ? const Value.absent()
           : Value(indexNumber),
+      discNumber: discNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(discNumber),
       productionYear: productionYear == null && nullToAbsent
           ? const Value.absent()
           : Value(productionYear),
       isFavorite: Value(isFavorite),
-      isDownloaded: Value(isDownloaded),
+      hasPrimaryImage: Value(hasPrimaryImage),
       container: container == null && nullToAbsent
           ? const Value.absent()
           : Value(container),
@@ -1076,19 +1247,23 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return CachedItem(
+      profileId: serializer.fromJson<String>(json['profileId']),
       serverId: serializer.fromJson<String>(json['serverId']),
       itemId: serializer.fromJson<String>(json['itemId']),
       itemType: serializer.fromJson<String>(json['itemType']),
       name: serializer.fromJson<String>(json['name']),
       subtitle: serializer.fromJson<String?>(json['subtitle']),
       albumId: serializer.fromJson<String?>(json['albumId']),
+      albumName: serializer.fromJson<String?>(json['albumName']),
       artistId: serializer.fromJson<String?>(json['artistId']),
+      artistsJson: serializer.fromJson<String>(json['artistsJson']),
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       durationMs: serializer.fromJson<int>(json['durationMs']),
       indexNumber: serializer.fromJson<int?>(json['indexNumber']),
+      discNumber: serializer.fromJson<int?>(json['discNumber']),
       productionYear: serializer.fromJson<int?>(json['productionYear']),
       isFavorite: serializer.fromJson<bool>(json['isFavorite']),
-      isDownloaded: serializer.fromJson<bool>(json['isDownloaded']),
+      hasPrimaryImage: serializer.fromJson<bool>(json['hasPrimaryImage']),
       container: serializer.fromJson<String?>(json['container']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -1097,68 +1272,85 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
+      'profileId': serializer.toJson<String>(profileId),
       'serverId': serializer.toJson<String>(serverId),
       'itemId': serializer.toJson<String>(itemId),
       'itemType': serializer.toJson<String>(itemType),
       'name': serializer.toJson<String>(name),
       'subtitle': serializer.toJson<String?>(subtitle),
       'albumId': serializer.toJson<String?>(albumId),
+      'albumName': serializer.toJson<String?>(albumName),
       'artistId': serializer.toJson<String?>(artistId),
+      'artistsJson': serializer.toJson<String>(artistsJson),
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'durationMs': serializer.toJson<int>(durationMs),
       'indexNumber': serializer.toJson<int?>(indexNumber),
+      'discNumber': serializer.toJson<int?>(discNumber),
       'productionYear': serializer.toJson<int?>(productionYear),
       'isFavorite': serializer.toJson<bool>(isFavorite),
-      'isDownloaded': serializer.toJson<bool>(isDownloaded),
+      'hasPrimaryImage': serializer.toJson<bool>(hasPrimaryImage),
       'container': serializer.toJson<String?>(container),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
   CachedItem copyWith({
+    String? profileId,
     String? serverId,
     String? itemId,
     String? itemType,
     String? name,
     Value<String?> subtitle = const Value.absent(),
     Value<String?> albumId = const Value.absent(),
+    Value<String?> albumName = const Value.absent(),
     Value<String?> artistId = const Value.absent(),
+    String? artistsJson,
     Value<String?> imageUrl = const Value.absent(),
     int? durationMs,
     Value<int?> indexNumber = const Value.absent(),
+    Value<int?> discNumber = const Value.absent(),
     Value<int?> productionYear = const Value.absent(),
     bool? isFavorite,
-    bool? isDownloaded,
+    bool? hasPrimaryImage,
     Value<String?> container = const Value.absent(),
     DateTime? updatedAt,
   }) => CachedItem(
+    profileId: profileId ?? this.profileId,
     serverId: serverId ?? this.serverId,
     itemId: itemId ?? this.itemId,
     itemType: itemType ?? this.itemType,
     name: name ?? this.name,
     subtitle: subtitle.present ? subtitle.value : this.subtitle,
     albumId: albumId.present ? albumId.value : this.albumId,
+    albumName: albumName.present ? albumName.value : this.albumName,
     artistId: artistId.present ? artistId.value : this.artistId,
+    artistsJson: artistsJson ?? this.artistsJson,
     imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
     durationMs: durationMs ?? this.durationMs,
     indexNumber: indexNumber.present ? indexNumber.value : this.indexNumber,
+    discNumber: discNumber.present ? discNumber.value : this.discNumber,
     productionYear: productionYear.present
         ? productionYear.value
         : this.productionYear,
     isFavorite: isFavorite ?? this.isFavorite,
-    isDownloaded: isDownloaded ?? this.isDownloaded,
+    hasPrimaryImage: hasPrimaryImage ?? this.hasPrimaryImage,
     container: container.present ? container.value : this.container,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   CachedItem copyWithCompanion(CachedItemsCompanion data) {
     return CachedItem(
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
       serverId: data.serverId.present ? data.serverId.value : this.serverId,
       itemId: data.itemId.present ? data.itemId.value : this.itemId,
       itemType: data.itemType.present ? data.itemType.value : this.itemType,
       name: data.name.present ? data.name.value : this.name,
       subtitle: data.subtitle.present ? data.subtitle.value : this.subtitle,
       albumId: data.albumId.present ? data.albumId.value : this.albumId,
+      albumName: data.albumName.present ? data.albumName.value : this.albumName,
       artistId: data.artistId.present ? data.artistId.value : this.artistId,
+      artistsJson: data.artistsJson.present
+          ? data.artistsJson.value
+          : this.artistsJson,
       imageUrl: data.imageUrl.present ? data.imageUrl.value : this.imageUrl,
       durationMs: data.durationMs.present
           ? data.durationMs.value
@@ -1166,15 +1358,18 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
       indexNumber: data.indexNumber.present
           ? data.indexNumber.value
           : this.indexNumber,
+      discNumber: data.discNumber.present
+          ? data.discNumber.value
+          : this.discNumber,
       productionYear: data.productionYear.present
           ? data.productionYear.value
           : this.productionYear,
       isFavorite: data.isFavorite.present
           ? data.isFavorite.value
           : this.isFavorite,
-      isDownloaded: data.isDownloaded.present
-          ? data.isDownloaded.value
-          : this.isDownloaded,
+      hasPrimaryImage: data.hasPrimaryImage.present
+          ? data.hasPrimaryImage.value
+          : this.hasPrimaryImage,
       container: data.container.present ? data.container.value : this.container,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -1183,19 +1378,23 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
   @override
   String toString() {
     return (StringBuffer('CachedItem(')
+          ..write('profileId: $profileId, ')
           ..write('serverId: $serverId, ')
           ..write('itemId: $itemId, ')
           ..write('itemType: $itemType, ')
           ..write('name: $name, ')
           ..write('subtitle: $subtitle, ')
           ..write('albumId: $albumId, ')
+          ..write('albumName: $albumName, ')
           ..write('artistId: $artistId, ')
+          ..write('artistsJson: $artistsJson, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('durationMs: $durationMs, ')
           ..write('indexNumber: $indexNumber, ')
+          ..write('discNumber: $discNumber, ')
           ..write('productionYear: $productionYear, ')
           ..write('isFavorite: $isFavorite, ')
-          ..write('isDownloaded: $isDownloaded, ')
+          ..write('hasPrimaryImage: $hasPrimaryImage, ')
           ..write('container: $container, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1204,19 +1403,23 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
 
   @override
   int get hashCode => Object.hash(
+    profileId,
     serverId,
     itemId,
     itemType,
     name,
     subtitle,
     albumId,
+    albumName,
     artistId,
+    artistsJson,
     imageUrl,
     durationMs,
     indexNumber,
+    discNumber,
     productionYear,
     isFavorite,
-    isDownloaded,
+    hasPrimaryImage,
     container,
     updatedAt,
   );
@@ -1224,112 +1427,137 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is CachedItem &&
+          other.profileId == this.profileId &&
           other.serverId == this.serverId &&
           other.itemId == this.itemId &&
           other.itemType == this.itemType &&
           other.name == this.name &&
           other.subtitle == this.subtitle &&
           other.albumId == this.albumId &&
+          other.albumName == this.albumName &&
           other.artistId == this.artistId &&
+          other.artistsJson == this.artistsJson &&
           other.imageUrl == this.imageUrl &&
           other.durationMs == this.durationMs &&
           other.indexNumber == this.indexNumber &&
+          other.discNumber == this.discNumber &&
           other.productionYear == this.productionYear &&
           other.isFavorite == this.isFavorite &&
-          other.isDownloaded == this.isDownloaded &&
+          other.hasPrimaryImage == this.hasPrimaryImage &&
           other.container == this.container &&
           other.updatedAt == this.updatedAt);
 }
 
 class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
+  final Value<String> profileId;
   final Value<String> serverId;
   final Value<String> itemId;
   final Value<String> itemType;
   final Value<String> name;
   final Value<String?> subtitle;
   final Value<String?> albumId;
+  final Value<String?> albumName;
   final Value<String?> artistId;
+  final Value<String> artistsJson;
   final Value<String?> imageUrl;
   final Value<int> durationMs;
   final Value<int?> indexNumber;
+  final Value<int?> discNumber;
   final Value<int?> productionYear;
   final Value<bool> isFavorite;
-  final Value<bool> isDownloaded;
+  final Value<bool> hasPrimaryImage;
   final Value<String?> container;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const CachedItemsCompanion({
+    this.profileId = const Value.absent(),
     this.serverId = const Value.absent(),
     this.itemId = const Value.absent(),
     this.itemType = const Value.absent(),
     this.name = const Value.absent(),
     this.subtitle = const Value.absent(),
     this.albumId = const Value.absent(),
+    this.albumName = const Value.absent(),
     this.artistId = const Value.absent(),
+    this.artistsJson = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.durationMs = const Value.absent(),
     this.indexNumber = const Value.absent(),
+    this.discNumber = const Value.absent(),
     this.productionYear = const Value.absent(),
     this.isFavorite = const Value.absent(),
-    this.isDownloaded = const Value.absent(),
+    this.hasPrimaryImage = const Value.absent(),
     this.container = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedItemsCompanion.insert({
+    required String profileId,
     required String serverId,
     required String itemId,
     required String itemType,
     required String name,
     this.subtitle = const Value.absent(),
     this.albumId = const Value.absent(),
+    this.albumName = const Value.absent(),
     this.artistId = const Value.absent(),
+    this.artistsJson = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.durationMs = const Value.absent(),
     this.indexNumber = const Value.absent(),
+    this.discNumber = const Value.absent(),
     this.productionYear = const Value.absent(),
     this.isFavorite = const Value.absent(),
-    this.isDownloaded = const Value.absent(),
+    this.hasPrimaryImage = const Value.absent(),
     this.container = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
-  }) : serverId = Value(serverId),
+  }) : profileId = Value(profileId),
+       serverId = Value(serverId),
        itemId = Value(itemId),
        itemType = Value(itemType),
        name = Value(name),
        updatedAt = Value(updatedAt);
   static Insertable<CachedItem> custom({
+    Expression<String>? profileId,
     Expression<String>? serverId,
     Expression<String>? itemId,
     Expression<String>? itemType,
     Expression<String>? name,
     Expression<String>? subtitle,
     Expression<String>? albumId,
+    Expression<String>? albumName,
     Expression<String>? artistId,
+    Expression<String>? artistsJson,
     Expression<String>? imageUrl,
     Expression<int>? durationMs,
     Expression<int>? indexNumber,
+    Expression<int>? discNumber,
     Expression<int>? productionYear,
     Expression<bool>? isFavorite,
-    Expression<bool>? isDownloaded,
+    Expression<bool>? hasPrimaryImage,
     Expression<String>? container,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
+      if (profileId != null) 'profile_id': profileId,
       if (serverId != null) 'server_id': serverId,
       if (itemId != null) 'item_id': itemId,
       if (itemType != null) 'item_type': itemType,
       if (name != null) 'name': name,
       if (subtitle != null) 'subtitle': subtitle,
       if (albumId != null) 'album_id': albumId,
+      if (albumName != null) 'album_name': albumName,
       if (artistId != null) 'artist_id': artistId,
+      if (artistsJson != null) 'artists_json': artistsJson,
       if (imageUrl != null) 'image_url': imageUrl,
       if (durationMs != null) 'duration_ms': durationMs,
       if (indexNumber != null) 'index_number': indexNumber,
+      if (discNumber != null) 'disc_number': discNumber,
       if (productionYear != null) 'production_year': productionYear,
       if (isFavorite != null) 'is_favorite': isFavorite,
-      if (isDownloaded != null) 'is_downloaded': isDownloaded,
+      if (hasPrimaryImage != null) 'has_primary_image': hasPrimaryImage,
       if (container != null) 'container': container,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1337,37 +1565,45 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
   }
 
   CachedItemsCompanion copyWith({
+    Value<String>? profileId,
     Value<String>? serverId,
     Value<String>? itemId,
     Value<String>? itemType,
     Value<String>? name,
     Value<String?>? subtitle,
     Value<String?>? albumId,
+    Value<String?>? albumName,
     Value<String?>? artistId,
+    Value<String>? artistsJson,
     Value<String?>? imageUrl,
     Value<int>? durationMs,
     Value<int?>? indexNumber,
+    Value<int?>? discNumber,
     Value<int?>? productionYear,
     Value<bool>? isFavorite,
-    Value<bool>? isDownloaded,
+    Value<bool>? hasPrimaryImage,
     Value<String?>? container,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
     return CachedItemsCompanion(
+      profileId: profileId ?? this.profileId,
       serverId: serverId ?? this.serverId,
       itemId: itemId ?? this.itemId,
       itemType: itemType ?? this.itemType,
       name: name ?? this.name,
       subtitle: subtitle ?? this.subtitle,
       albumId: albumId ?? this.albumId,
+      albumName: albumName ?? this.albumName,
       artistId: artistId ?? this.artistId,
+      artistsJson: artistsJson ?? this.artistsJson,
       imageUrl: imageUrl ?? this.imageUrl,
       durationMs: durationMs ?? this.durationMs,
       indexNumber: indexNumber ?? this.indexNumber,
+      discNumber: discNumber ?? this.discNumber,
       productionYear: productionYear ?? this.productionYear,
       isFavorite: isFavorite ?? this.isFavorite,
-      isDownloaded: isDownloaded ?? this.isDownloaded,
+      hasPrimaryImage: hasPrimaryImage ?? this.hasPrimaryImage,
       container: container ?? this.container,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -1377,6 +1613,9 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
     if (serverId.present) {
       map['server_id'] = Variable<String>(serverId.value);
     }
@@ -1395,8 +1634,14 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
     if (albumId.present) {
       map['album_id'] = Variable<String>(albumId.value);
     }
+    if (albumName.present) {
+      map['album_name'] = Variable<String>(albumName.value);
+    }
     if (artistId.present) {
       map['artist_id'] = Variable<String>(artistId.value);
+    }
+    if (artistsJson.present) {
+      map['artists_json'] = Variable<String>(artistsJson.value);
     }
     if (imageUrl.present) {
       map['image_url'] = Variable<String>(imageUrl.value);
@@ -1407,14 +1652,17 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
     if (indexNumber.present) {
       map['index_number'] = Variable<int>(indexNumber.value);
     }
+    if (discNumber.present) {
+      map['disc_number'] = Variable<int>(discNumber.value);
+    }
     if (productionYear.present) {
       map['production_year'] = Variable<int>(productionYear.value);
     }
     if (isFavorite.present) {
       map['is_favorite'] = Variable<bool>(isFavorite.value);
     }
-    if (isDownloaded.present) {
-      map['is_downloaded'] = Variable<bool>(isDownloaded.value);
+    if (hasPrimaryImage.present) {
+      map['has_primary_image'] = Variable<bool>(hasPrimaryImage.value);
     }
     if (container.present) {
       map['container'] = Variable<String>(container.value);
@@ -1431,19 +1679,23 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
   @override
   String toString() {
     return (StringBuffer('CachedItemsCompanion(')
+          ..write('profileId: $profileId, ')
           ..write('serverId: $serverId, ')
           ..write('itemId: $itemId, ')
           ..write('itemType: $itemType, ')
           ..write('name: $name, ')
           ..write('subtitle: $subtitle, ')
           ..write('albumId: $albumId, ')
+          ..write('albumName: $albumName, ')
           ..write('artistId: $artistId, ')
+          ..write('artistsJson: $artistsJson, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('durationMs: $durationMs, ')
           ..write('indexNumber: $indexNumber, ')
+          ..write('discNumber: $discNumber, ')
           ..write('productionYear: $productionYear, ')
           ..write('isFavorite: $isFavorite, ')
-          ..write('isDownloaded: $isDownloaded, ')
+          ..write('hasPrimaryImage: $hasPrimaryImage, ')
           ..write('container: $container, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -1467,12 +1719,12 @@ class $DownloadEntriesTable extends DownloadEntries
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _serverIdMeta = const VerificationMeta(
-    'serverId',
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
   );
   @override
-  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
-    'server_id',
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
@@ -1542,6 +1794,17 @@ class $DownloadEntriesTable extends DownloadEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _lastPlayedAtMeta = const VerificationMeta(
+    'lastPlayedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastPlayedAt = GeneratedColumn<DateTime>(
+    'last_played_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -1556,13 +1819,14 @@ class $DownloadEntriesTable extends DownloadEntries
   @override
   List<GeneratedColumn> get $columns => [
     id,
-    serverId,
+    profileId,
     itemId,
     status,
     filePath,
     progress,
     sizeBytes,
     checksum,
+    lastPlayedAt,
     updatedAt,
   ];
   @override
@@ -1582,13 +1846,13 @@ class $DownloadEntriesTable extends DownloadEntries
     } else if (isInserting) {
       context.missing(_idMeta);
     }
-    if (data.containsKey('server_id')) {
+    if (data.containsKey('profile_id')) {
       context.handle(
-        _serverIdMeta,
-        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
       );
     } else if (isInserting) {
-      context.missing(_serverIdMeta);
+      context.missing(_profileIdMeta);
     }
     if (data.containsKey('item_id')) {
       context.handle(
@@ -1630,6 +1894,15 @@ class $DownloadEntriesTable extends DownloadEntries
         checksum.isAcceptableOrUnknown(data['checksum']!, _checksumMeta),
       );
     }
+    if (data.containsKey('last_played_at')) {
+      context.handle(
+        _lastPlayedAtMeta,
+        lastPlayedAt.isAcceptableOrUnknown(
+          data['last_played_at']!,
+          _lastPlayedAtMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -1651,9 +1924,9 @@ class $DownloadEntriesTable extends DownloadEntries
         DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
-      serverId: attachedDatabase.typeMapping.read(
+      profileId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}server_id'],
+        data['${effectivePrefix}profile_id'],
       )!,
       itemId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -1679,6 +1952,10 @@ class $DownloadEntriesTable extends DownloadEntries
         DriftSqlType.string,
         data['${effectivePrefix}checksum'],
       ),
+      lastPlayedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_played_at'],
+      ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -1694,30 +1971,32 @@ class $DownloadEntriesTable extends DownloadEntries
 
 class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
   final String id;
-  final String serverId;
+  final String profileId;
   final String itemId;
   final String status;
   final String? filePath;
   final double progress;
   final int sizeBytes;
   final String? checksum;
+  final DateTime? lastPlayedAt;
   final DateTime updatedAt;
   const DownloadEntry({
     required this.id,
-    required this.serverId,
+    required this.profileId,
     required this.itemId,
     required this.status,
     this.filePath,
     required this.progress,
     required this.sizeBytes,
     this.checksum,
+    this.lastPlayedAt,
     required this.updatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['server_id'] = Variable<String>(serverId);
+    map['profile_id'] = Variable<String>(profileId);
     map['item_id'] = Variable<String>(itemId);
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || filePath != null) {
@@ -1728,6 +2007,9 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
     if (!nullToAbsent || checksum != null) {
       map['checksum'] = Variable<String>(checksum);
     }
+    if (!nullToAbsent || lastPlayedAt != null) {
+      map['last_played_at'] = Variable<DateTime>(lastPlayedAt);
+    }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
@@ -1735,7 +2017,7 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
   DownloadEntriesCompanion toCompanion(bool nullToAbsent) {
     return DownloadEntriesCompanion(
       id: Value(id),
-      serverId: Value(serverId),
+      profileId: Value(profileId),
       itemId: Value(itemId),
       status: Value(status),
       filePath: filePath == null && nullToAbsent
@@ -1746,6 +2028,9 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
       checksum: checksum == null && nullToAbsent
           ? const Value.absent()
           : Value(checksum),
+      lastPlayedAt: lastPlayedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastPlayedAt),
       updatedAt: Value(updatedAt),
     );
   }
@@ -1757,13 +2042,14 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return DownloadEntry(
       id: serializer.fromJson<String>(json['id']),
-      serverId: serializer.fromJson<String>(json['serverId']),
+      profileId: serializer.fromJson<String>(json['profileId']),
       itemId: serializer.fromJson<String>(json['itemId']),
       status: serializer.fromJson<String>(json['status']),
       filePath: serializer.fromJson<String?>(json['filePath']),
       progress: serializer.fromJson<double>(json['progress']),
       sizeBytes: serializer.fromJson<int>(json['sizeBytes']),
       checksum: serializer.fromJson<String?>(json['checksum']),
+      lastPlayedAt: serializer.fromJson<DateTime?>(json['lastPlayedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -1772,48 +2058,54 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'serverId': serializer.toJson<String>(serverId),
+      'profileId': serializer.toJson<String>(profileId),
       'itemId': serializer.toJson<String>(itemId),
       'status': serializer.toJson<String>(status),
       'filePath': serializer.toJson<String?>(filePath),
       'progress': serializer.toJson<double>(progress),
       'sizeBytes': serializer.toJson<int>(sizeBytes),
       'checksum': serializer.toJson<String?>(checksum),
+      'lastPlayedAt': serializer.toJson<DateTime?>(lastPlayedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
   DownloadEntry copyWith({
     String? id,
-    String? serverId,
+    String? profileId,
     String? itemId,
     String? status,
     Value<String?> filePath = const Value.absent(),
     double? progress,
     int? sizeBytes,
     Value<String?> checksum = const Value.absent(),
+    Value<DateTime?> lastPlayedAt = const Value.absent(),
     DateTime? updatedAt,
   }) => DownloadEntry(
     id: id ?? this.id,
-    serverId: serverId ?? this.serverId,
+    profileId: profileId ?? this.profileId,
     itemId: itemId ?? this.itemId,
     status: status ?? this.status,
     filePath: filePath.present ? filePath.value : this.filePath,
     progress: progress ?? this.progress,
     sizeBytes: sizeBytes ?? this.sizeBytes,
     checksum: checksum.present ? checksum.value : this.checksum,
+    lastPlayedAt: lastPlayedAt.present ? lastPlayedAt.value : this.lastPlayedAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   DownloadEntry copyWithCompanion(DownloadEntriesCompanion data) {
     return DownloadEntry(
       id: data.id.present ? data.id.value : this.id,
-      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
       itemId: data.itemId.present ? data.itemId.value : this.itemId,
       status: data.status.present ? data.status.value : this.status,
       filePath: data.filePath.present ? data.filePath.value : this.filePath,
       progress: data.progress.present ? data.progress.value : this.progress,
       sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
       checksum: data.checksum.present ? data.checksum.value : this.checksum,
+      lastPlayedAt: data.lastPlayedAt.present
+          ? data.lastPlayedAt.value
+          : this.lastPlayedAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -1822,13 +2114,14 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
   String toString() {
     return (StringBuffer('DownloadEntry(')
           ..write('id: $id, ')
-          ..write('serverId: $serverId, ')
+          ..write('profileId: $profileId, ')
           ..write('itemId: $itemId, ')
           ..write('status: $status, ')
           ..write('filePath: $filePath, ')
           ..write('progress: $progress, ')
           ..write('sizeBytes: $sizeBytes, ')
           ..write('checksum: $checksum, ')
+          ..write('lastPlayedAt: $lastPlayedAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -1837,13 +2130,14 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
   @override
   int get hashCode => Object.hash(
     id,
-    serverId,
+    profileId,
     itemId,
     status,
     filePath,
     progress,
     sizeBytes,
     checksum,
+    lastPlayedAt,
     updatedAt,
   );
   @override
@@ -1851,76 +2145,82 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
       identical(this, other) ||
       (other is DownloadEntry &&
           other.id == this.id &&
-          other.serverId == this.serverId &&
+          other.profileId == this.profileId &&
           other.itemId == this.itemId &&
           other.status == this.status &&
           other.filePath == this.filePath &&
           other.progress == this.progress &&
           other.sizeBytes == this.sizeBytes &&
           other.checksum == this.checksum &&
+          other.lastPlayedAt == this.lastPlayedAt &&
           other.updatedAt == this.updatedAt);
 }
 
 class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
   final Value<String> id;
-  final Value<String> serverId;
+  final Value<String> profileId;
   final Value<String> itemId;
   final Value<String> status;
   final Value<String?> filePath;
   final Value<double> progress;
   final Value<int> sizeBytes;
   final Value<String?> checksum;
+  final Value<DateTime?> lastPlayedAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const DownloadEntriesCompanion({
     this.id = const Value.absent(),
-    this.serverId = const Value.absent(),
+    this.profileId = const Value.absent(),
     this.itemId = const Value.absent(),
     this.status = const Value.absent(),
     this.filePath = const Value.absent(),
     this.progress = const Value.absent(),
     this.sizeBytes = const Value.absent(),
     this.checksum = const Value.absent(),
+    this.lastPlayedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DownloadEntriesCompanion.insert({
     required String id,
-    required String serverId,
+    required String profileId,
     required String itemId,
     required String status,
     this.filePath = const Value.absent(),
     this.progress = const Value.absent(),
     this.sizeBytes = const Value.absent(),
     this.checksum = const Value.absent(),
+    this.lastPlayedAt = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
-       serverId = Value(serverId),
+       profileId = Value(profileId),
        itemId = Value(itemId),
        status = Value(status),
        updatedAt = Value(updatedAt);
   static Insertable<DownloadEntry> custom({
     Expression<String>? id,
-    Expression<String>? serverId,
+    Expression<String>? profileId,
     Expression<String>? itemId,
     Expression<String>? status,
     Expression<String>? filePath,
     Expression<double>? progress,
     Expression<int>? sizeBytes,
     Expression<String>? checksum,
+    Expression<DateTime>? lastPlayedAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
-      if (serverId != null) 'server_id': serverId,
+      if (profileId != null) 'profile_id': profileId,
       if (itemId != null) 'item_id': itemId,
       if (status != null) 'status': status,
       if (filePath != null) 'file_path': filePath,
       if (progress != null) 'progress': progress,
       if (sizeBytes != null) 'size_bytes': sizeBytes,
       if (checksum != null) 'checksum': checksum,
+      if (lastPlayedAt != null) 'last_played_at': lastPlayedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1928,25 +2228,27 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
 
   DownloadEntriesCompanion copyWith({
     Value<String>? id,
-    Value<String>? serverId,
+    Value<String>? profileId,
     Value<String>? itemId,
     Value<String>? status,
     Value<String?>? filePath,
     Value<double>? progress,
     Value<int>? sizeBytes,
     Value<String?>? checksum,
+    Value<DateTime?>? lastPlayedAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
     return DownloadEntriesCompanion(
       id: id ?? this.id,
-      serverId: serverId ?? this.serverId,
+      profileId: profileId ?? this.profileId,
       itemId: itemId ?? this.itemId,
       status: status ?? this.status,
       filePath: filePath ?? this.filePath,
       progress: progress ?? this.progress,
       sizeBytes: sizeBytes ?? this.sizeBytes,
       checksum: checksum ?? this.checksum,
+      lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1958,8 +2260,8 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
     if (id.present) {
       map['id'] = Variable<String>(id.value);
     }
-    if (serverId.present) {
-      map['server_id'] = Variable<String>(serverId.value);
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
     }
     if (itemId.present) {
       map['item_id'] = Variable<String>(itemId.value);
@@ -1979,6 +2281,9 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
     if (checksum.present) {
       map['checksum'] = Variable<String>(checksum.value);
     }
+    if (lastPlayedAt.present) {
+      map['last_played_at'] = Variable<DateTime>(lastPlayedAt.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -1992,13 +2297,14 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
   String toString() {
     return (StringBuffer('DownloadEntriesCompanion(')
           ..write('id: $id, ')
-          ..write('serverId: $serverId, ')
+          ..write('profileId: $profileId, ')
           ..write('itemId: $itemId, ')
           ..write('status: $status, ')
           ..write('filePath: $filePath, ')
           ..write('progress: $progress, ')
           ..write('sizeBytes: $sizeBytes, ')
           ..write('checksum: $checksum, ')
+          ..write('lastPlayedAt: $lastPlayedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -2012,12 +2318,12 @@ class $QueueEntriesTable extends QueueEntries
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $QueueEntriesTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _serverIdMeta = const VerificationMeta(
-    'serverId',
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
   );
   @override
-  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
-    'server_id',
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
@@ -2060,7 +2366,7 @@ class $QueueEntriesTable extends QueueEntries
   );
   @override
   List<GeneratedColumn> get $columns => [
-    serverId,
+    profileId,
     queueIndex,
     itemId,
     isCurrent,
@@ -2077,13 +2383,13 @@ class $QueueEntriesTable extends QueueEntries
   }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
-    if (data.containsKey('server_id')) {
+    if (data.containsKey('profile_id')) {
       context.handle(
-        _serverIdMeta,
-        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
       );
     } else if (isInserting) {
-      context.missing(_serverIdMeta);
+      context.missing(_profileIdMeta);
     }
     if (data.containsKey('queue_index')) {
       context.handle(
@@ -2111,14 +2417,14 @@ class $QueueEntriesTable extends QueueEntries
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {serverId, queueIndex};
+  Set<GeneratedColumn> get $primaryKey => {profileId, queueIndex};
   @override
   QueueEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return QueueEntry(
-      serverId: attachedDatabase.typeMapping.read(
+      profileId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}server_id'],
+        data['${effectivePrefix}profile_id'],
       )!,
       queueIndex: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -2142,12 +2448,12 @@ class $QueueEntriesTable extends QueueEntries
 }
 
 class QueueEntry extends DataClass implements Insertable<QueueEntry> {
-  final String serverId;
+  final String profileId;
   final int queueIndex;
   final String itemId;
   final bool isCurrent;
   const QueueEntry({
-    required this.serverId,
+    required this.profileId,
     required this.queueIndex,
     required this.itemId,
     required this.isCurrent,
@@ -2155,7 +2461,7 @@ class QueueEntry extends DataClass implements Insertable<QueueEntry> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['server_id'] = Variable<String>(serverId);
+    map['profile_id'] = Variable<String>(profileId);
     map['queue_index'] = Variable<int>(queueIndex);
     map['item_id'] = Variable<String>(itemId);
     map['is_current'] = Variable<bool>(isCurrent);
@@ -2164,7 +2470,7 @@ class QueueEntry extends DataClass implements Insertable<QueueEntry> {
 
   QueueEntriesCompanion toCompanion(bool nullToAbsent) {
     return QueueEntriesCompanion(
-      serverId: Value(serverId),
+      profileId: Value(profileId),
       queueIndex: Value(queueIndex),
       itemId: Value(itemId),
       isCurrent: Value(isCurrent),
@@ -2177,7 +2483,7 @@ class QueueEntry extends DataClass implements Insertable<QueueEntry> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return QueueEntry(
-      serverId: serializer.fromJson<String>(json['serverId']),
+      profileId: serializer.fromJson<String>(json['profileId']),
       queueIndex: serializer.fromJson<int>(json['queueIndex']),
       itemId: serializer.fromJson<String>(json['itemId']),
       isCurrent: serializer.fromJson<bool>(json['isCurrent']),
@@ -2187,7 +2493,7 @@ class QueueEntry extends DataClass implements Insertable<QueueEntry> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'serverId': serializer.toJson<String>(serverId),
+      'profileId': serializer.toJson<String>(profileId),
       'queueIndex': serializer.toJson<int>(queueIndex),
       'itemId': serializer.toJson<String>(itemId),
       'isCurrent': serializer.toJson<bool>(isCurrent),
@@ -2195,19 +2501,19 @@ class QueueEntry extends DataClass implements Insertable<QueueEntry> {
   }
 
   QueueEntry copyWith({
-    String? serverId,
+    String? profileId,
     int? queueIndex,
     String? itemId,
     bool? isCurrent,
   }) => QueueEntry(
-    serverId: serverId ?? this.serverId,
+    profileId: profileId ?? this.profileId,
     queueIndex: queueIndex ?? this.queueIndex,
     itemId: itemId ?? this.itemId,
     isCurrent: isCurrent ?? this.isCurrent,
   );
   QueueEntry copyWithCompanion(QueueEntriesCompanion data) {
     return QueueEntry(
-      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
       queueIndex: data.queueIndex.present
           ? data.queueIndex.value
           : this.queueIndex,
@@ -2219,7 +2525,7 @@ class QueueEntry extends DataClass implements Insertable<QueueEntry> {
   @override
   String toString() {
     return (StringBuffer('QueueEntry(')
-          ..write('serverId: $serverId, ')
+          ..write('profileId: $profileId, ')
           ..write('queueIndex: $queueIndex, ')
           ..write('itemId: $itemId, ')
           ..write('isCurrent: $isCurrent')
@@ -2228,48 +2534,48 @@ class QueueEntry extends DataClass implements Insertable<QueueEntry> {
   }
 
   @override
-  int get hashCode => Object.hash(serverId, queueIndex, itemId, isCurrent);
+  int get hashCode => Object.hash(profileId, queueIndex, itemId, isCurrent);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is QueueEntry &&
-          other.serverId == this.serverId &&
+          other.profileId == this.profileId &&
           other.queueIndex == this.queueIndex &&
           other.itemId == this.itemId &&
           other.isCurrent == this.isCurrent);
 }
 
 class QueueEntriesCompanion extends UpdateCompanion<QueueEntry> {
-  final Value<String> serverId;
+  final Value<String> profileId;
   final Value<int> queueIndex;
   final Value<String> itemId;
   final Value<bool> isCurrent;
   final Value<int> rowid;
   const QueueEntriesCompanion({
-    this.serverId = const Value.absent(),
+    this.profileId = const Value.absent(),
     this.queueIndex = const Value.absent(),
     this.itemId = const Value.absent(),
     this.isCurrent = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   QueueEntriesCompanion.insert({
-    required String serverId,
+    required String profileId,
     required int queueIndex,
     required String itemId,
     this.isCurrent = const Value.absent(),
     this.rowid = const Value.absent(),
-  }) : serverId = Value(serverId),
+  }) : profileId = Value(profileId),
        queueIndex = Value(queueIndex),
        itemId = Value(itemId);
   static Insertable<QueueEntry> custom({
-    Expression<String>? serverId,
+    Expression<String>? profileId,
     Expression<int>? queueIndex,
     Expression<String>? itemId,
     Expression<bool>? isCurrent,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
-      if (serverId != null) 'server_id': serverId,
+      if (profileId != null) 'profile_id': profileId,
       if (queueIndex != null) 'queue_index': queueIndex,
       if (itemId != null) 'item_id': itemId,
       if (isCurrent != null) 'is_current': isCurrent,
@@ -2278,14 +2584,14 @@ class QueueEntriesCompanion extends UpdateCompanion<QueueEntry> {
   }
 
   QueueEntriesCompanion copyWith({
-    Value<String>? serverId,
+    Value<String>? profileId,
     Value<int>? queueIndex,
     Value<String>? itemId,
     Value<bool>? isCurrent,
     Value<int>? rowid,
   }) {
     return QueueEntriesCompanion(
-      serverId: serverId ?? this.serverId,
+      profileId: profileId ?? this.profileId,
       queueIndex: queueIndex ?? this.queueIndex,
       itemId: itemId ?? this.itemId,
       isCurrent: isCurrent ?? this.isCurrent,
@@ -2296,8 +2602,8 @@ class QueueEntriesCompanion extends UpdateCompanion<QueueEntry> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    if (serverId.present) {
-      map['server_id'] = Variable<String>(serverId.value);
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
     }
     if (queueIndex.present) {
       map['queue_index'] = Variable<int>(queueIndex.value);
@@ -2317,10 +2623,444 @@ class QueueEntriesCompanion extends UpdateCompanion<QueueEntry> {
   @override
   String toString() {
     return (StringBuffer('QueueEntriesCompanion(')
-          ..write('serverId: $serverId, ')
+          ..write('profileId: $profileId, ')
           ..write('queueIndex: $queueIndex, ')
           ..write('itemId: $itemId, ')
           ..write('isCurrent: $isCurrent, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PlaybackStatesTable extends PlaybackStates
+    with TableInfo<$PlaybackStatesTable, PlaybackState> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PlaybackStatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _currentIndexMeta = const VerificationMeta(
+    'currentIndex',
+  );
+  @override
+  late final GeneratedColumn<int> currentIndex = GeneratedColumn<int>(
+    'current_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(-1),
+  );
+  static const VerificationMeta _positionMsMeta = const VerificationMeta(
+    'positionMs',
+  );
+  @override
+  late final GeneratedColumn<int> positionMs = GeneratedColumn<int>(
+    'position_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _shuffleMeta = const VerificationMeta(
+    'shuffle',
+  );
+  @override
+  late final GeneratedColumn<bool> shuffle = GeneratedColumn<bool>(
+    'shuffle',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("shuffle" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _repeatModeMeta = const VerificationMeta(
+    'repeatMode',
+  );
+  @override
+  late final GeneratedColumn<String> repeatMode = GeneratedColumn<String>(
+    'repeat_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('off'),
+  );
+  static const VerificationMeta _sleepDeadlineMeta = const VerificationMeta(
+    'sleepDeadline',
+  );
+  @override
+  late final GeneratedColumn<DateTime> sleepDeadline =
+      GeneratedColumn<DateTime>(
+        'sleep_deadline',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    profileId,
+    currentIndex,
+    positionMs,
+    shuffle,
+    repeatMode,
+    sleepDeadline,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'playback_states';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PlaybackState> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('current_index')) {
+      context.handle(
+        _currentIndexMeta,
+        currentIndex.isAcceptableOrUnknown(
+          data['current_index']!,
+          _currentIndexMeta,
+        ),
+      );
+    }
+    if (data.containsKey('position_ms')) {
+      context.handle(
+        _positionMsMeta,
+        positionMs.isAcceptableOrUnknown(data['position_ms']!, _positionMsMeta),
+      );
+    }
+    if (data.containsKey('shuffle')) {
+      context.handle(
+        _shuffleMeta,
+        shuffle.isAcceptableOrUnknown(data['shuffle']!, _shuffleMeta),
+      );
+    }
+    if (data.containsKey('repeat_mode')) {
+      context.handle(
+        _repeatModeMeta,
+        repeatMode.isAcceptableOrUnknown(data['repeat_mode']!, _repeatModeMeta),
+      );
+    }
+    if (data.containsKey('sleep_deadline')) {
+      context.handle(
+        _sleepDeadlineMeta,
+        sleepDeadline.isAcceptableOrUnknown(
+          data['sleep_deadline']!,
+          _sleepDeadlineMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {profileId};
+  @override
+  PlaybackState map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PlaybackState(
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      currentIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}current_index'],
+      )!,
+      positionMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position_ms'],
+      )!,
+      shuffle: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}shuffle'],
+      )!,
+      repeatMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}repeat_mode'],
+      )!,
+      sleepDeadline: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}sleep_deadline'],
+      ),
+    );
+  }
+
+  @override
+  $PlaybackStatesTable createAlias(String alias) {
+    return $PlaybackStatesTable(attachedDatabase, alias);
+  }
+}
+
+class PlaybackState extends DataClass implements Insertable<PlaybackState> {
+  final String profileId;
+  final int currentIndex;
+  final int positionMs;
+  final bool shuffle;
+  final String repeatMode;
+  final DateTime? sleepDeadline;
+  const PlaybackState({
+    required this.profileId,
+    required this.currentIndex,
+    required this.positionMs,
+    required this.shuffle,
+    required this.repeatMode,
+    this.sleepDeadline,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['profile_id'] = Variable<String>(profileId);
+    map['current_index'] = Variable<int>(currentIndex);
+    map['position_ms'] = Variable<int>(positionMs);
+    map['shuffle'] = Variable<bool>(shuffle);
+    map['repeat_mode'] = Variable<String>(repeatMode);
+    if (!nullToAbsent || sleepDeadline != null) {
+      map['sleep_deadline'] = Variable<DateTime>(sleepDeadline);
+    }
+    return map;
+  }
+
+  PlaybackStatesCompanion toCompanion(bool nullToAbsent) {
+    return PlaybackStatesCompanion(
+      profileId: Value(profileId),
+      currentIndex: Value(currentIndex),
+      positionMs: Value(positionMs),
+      shuffle: Value(shuffle),
+      repeatMode: Value(repeatMode),
+      sleepDeadline: sleepDeadline == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sleepDeadline),
+    );
+  }
+
+  factory PlaybackState.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PlaybackState(
+      profileId: serializer.fromJson<String>(json['profileId']),
+      currentIndex: serializer.fromJson<int>(json['currentIndex']),
+      positionMs: serializer.fromJson<int>(json['positionMs']),
+      shuffle: serializer.fromJson<bool>(json['shuffle']),
+      repeatMode: serializer.fromJson<String>(json['repeatMode']),
+      sleepDeadline: serializer.fromJson<DateTime?>(json['sleepDeadline']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'profileId': serializer.toJson<String>(profileId),
+      'currentIndex': serializer.toJson<int>(currentIndex),
+      'positionMs': serializer.toJson<int>(positionMs),
+      'shuffle': serializer.toJson<bool>(shuffle),
+      'repeatMode': serializer.toJson<String>(repeatMode),
+      'sleepDeadline': serializer.toJson<DateTime?>(sleepDeadline),
+    };
+  }
+
+  PlaybackState copyWith({
+    String? profileId,
+    int? currentIndex,
+    int? positionMs,
+    bool? shuffle,
+    String? repeatMode,
+    Value<DateTime?> sleepDeadline = const Value.absent(),
+  }) => PlaybackState(
+    profileId: profileId ?? this.profileId,
+    currentIndex: currentIndex ?? this.currentIndex,
+    positionMs: positionMs ?? this.positionMs,
+    shuffle: shuffle ?? this.shuffle,
+    repeatMode: repeatMode ?? this.repeatMode,
+    sleepDeadline: sleepDeadline.present
+        ? sleepDeadline.value
+        : this.sleepDeadline,
+  );
+  PlaybackState copyWithCompanion(PlaybackStatesCompanion data) {
+    return PlaybackState(
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      currentIndex: data.currentIndex.present
+          ? data.currentIndex.value
+          : this.currentIndex,
+      positionMs: data.positionMs.present
+          ? data.positionMs.value
+          : this.positionMs,
+      shuffle: data.shuffle.present ? data.shuffle.value : this.shuffle,
+      repeatMode: data.repeatMode.present
+          ? data.repeatMode.value
+          : this.repeatMode,
+      sleepDeadline: data.sleepDeadline.present
+          ? data.sleepDeadline.value
+          : this.sleepDeadline,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlaybackState(')
+          ..write('profileId: $profileId, ')
+          ..write('currentIndex: $currentIndex, ')
+          ..write('positionMs: $positionMs, ')
+          ..write('shuffle: $shuffle, ')
+          ..write('repeatMode: $repeatMode, ')
+          ..write('sleepDeadline: $sleepDeadline')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    profileId,
+    currentIndex,
+    positionMs,
+    shuffle,
+    repeatMode,
+    sleepDeadline,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PlaybackState &&
+          other.profileId == this.profileId &&
+          other.currentIndex == this.currentIndex &&
+          other.positionMs == this.positionMs &&
+          other.shuffle == this.shuffle &&
+          other.repeatMode == this.repeatMode &&
+          other.sleepDeadline == this.sleepDeadline);
+}
+
+class PlaybackStatesCompanion extends UpdateCompanion<PlaybackState> {
+  final Value<String> profileId;
+  final Value<int> currentIndex;
+  final Value<int> positionMs;
+  final Value<bool> shuffle;
+  final Value<String> repeatMode;
+  final Value<DateTime?> sleepDeadline;
+  final Value<int> rowid;
+  const PlaybackStatesCompanion({
+    this.profileId = const Value.absent(),
+    this.currentIndex = const Value.absent(),
+    this.positionMs = const Value.absent(),
+    this.shuffle = const Value.absent(),
+    this.repeatMode = const Value.absent(),
+    this.sleepDeadline = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PlaybackStatesCompanion.insert({
+    required String profileId,
+    this.currentIndex = const Value.absent(),
+    this.positionMs = const Value.absent(),
+    this.shuffle = const Value.absent(),
+    this.repeatMode = const Value.absent(),
+    this.sleepDeadline = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : profileId = Value(profileId);
+  static Insertable<PlaybackState> custom({
+    Expression<String>? profileId,
+    Expression<int>? currentIndex,
+    Expression<int>? positionMs,
+    Expression<bool>? shuffle,
+    Expression<String>? repeatMode,
+    Expression<DateTime>? sleepDeadline,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (profileId != null) 'profile_id': profileId,
+      if (currentIndex != null) 'current_index': currentIndex,
+      if (positionMs != null) 'position_ms': positionMs,
+      if (shuffle != null) 'shuffle': shuffle,
+      if (repeatMode != null) 'repeat_mode': repeatMode,
+      if (sleepDeadline != null) 'sleep_deadline': sleepDeadline,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PlaybackStatesCompanion copyWith({
+    Value<String>? profileId,
+    Value<int>? currentIndex,
+    Value<int>? positionMs,
+    Value<bool>? shuffle,
+    Value<String>? repeatMode,
+    Value<DateTime?>? sleepDeadline,
+    Value<int>? rowid,
+  }) {
+    return PlaybackStatesCompanion(
+      profileId: profileId ?? this.profileId,
+      currentIndex: currentIndex ?? this.currentIndex,
+      positionMs: positionMs ?? this.positionMs,
+      shuffle: shuffle ?? this.shuffle,
+      repeatMode: repeatMode ?? this.repeatMode,
+      sleepDeadline: sleepDeadline ?? this.sleepDeadline,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (currentIndex.present) {
+      map['current_index'] = Variable<int>(currentIndex.value);
+    }
+    if (positionMs.present) {
+      map['position_ms'] = Variable<int>(positionMs.value);
+    }
+    if (shuffle.present) {
+      map['shuffle'] = Variable<bool>(shuffle.value);
+    }
+    if (repeatMode.present) {
+      map['repeat_mode'] = Variable<String>(repeatMode.value);
+    }
+    if (sleepDeadline.present) {
+      map['sleep_deadline'] = Variable<DateTime>(sleepDeadline.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlaybackStatesCompanion(')
+          ..write('profileId: $profileId, ')
+          ..write('currentIndex: $currentIndex, ')
+          ..write('positionMs: $positionMs, ')
+          ..write('shuffle: $shuffle, ')
+          ..write('repeatMode: $repeatMode, ')
+          ..write('sleepDeadline: $sleepDeadline, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2346,12 +3086,12 @@ class $PendingReportsTable extends PendingReports
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
-  static const VerificationMeta _serverIdMeta = const VerificationMeta(
-    'serverId',
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
   );
   @override
-  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
-    'server_id',
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
@@ -2361,6 +3101,17 @@ class $PendingReportsTable extends PendingReports
   @override
   late final GeneratedColumn<String> itemId = GeneratedColumn<String>(
     'item_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _playSessionIdMeta = const VerificationMeta(
+    'playSessionId',
+  );
+  @override
+  late final GeneratedColumn<String> playSessionId = GeneratedColumn<String>(
+    'play_session_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
@@ -2413,8 +3164,9 @@ class $PendingReportsTable extends PendingReports
   @override
   List<GeneratedColumn> get $columns => [
     id,
-    serverId,
+    profileId,
     itemId,
+    playSessionId,
     eventType,
     positionMs,
     payloadJson,
@@ -2435,13 +3187,13 @@ class $PendingReportsTable extends PendingReports
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
-    if (data.containsKey('server_id')) {
+    if (data.containsKey('profile_id')) {
       context.handle(
-        _serverIdMeta,
-        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
       );
     } else if (isInserting) {
-      context.missing(_serverIdMeta);
+      context.missing(_profileIdMeta);
     }
     if (data.containsKey('item_id')) {
       context.handle(
@@ -2450,6 +3202,17 @@ class $PendingReportsTable extends PendingReports
       );
     } else if (isInserting) {
       context.missing(_itemIdMeta);
+    }
+    if (data.containsKey('play_session_id')) {
+      context.handle(
+        _playSessionIdMeta,
+        playSessionId.isAcceptableOrUnknown(
+          data['play_session_id']!,
+          _playSessionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_playSessionIdMeta);
     }
     if (data.containsKey('event_type')) {
       context.handle(
@@ -2499,13 +3262,17 @@ class $PendingReportsTable extends PendingReports
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
-      serverId: attachedDatabase.typeMapping.read(
+      profileId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}server_id'],
+        data['${effectivePrefix}profile_id'],
       )!,
       itemId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}item_id'],
+      )!,
+      playSessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}play_session_id'],
       )!,
       eventType: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -2534,16 +3301,18 @@ class $PendingReportsTable extends PendingReports
 
 class PendingReport extends DataClass implements Insertable<PendingReport> {
   final int id;
-  final String serverId;
+  final String profileId;
   final String itemId;
+  final String playSessionId;
   final String eventType;
   final int positionMs;
   final String payloadJson;
   final DateTime createdAt;
   const PendingReport({
     required this.id,
-    required this.serverId,
+    required this.profileId,
     required this.itemId,
+    required this.playSessionId,
     required this.eventType,
     required this.positionMs,
     required this.payloadJson,
@@ -2553,8 +3322,9 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
-    map['server_id'] = Variable<String>(serverId);
+    map['profile_id'] = Variable<String>(profileId);
     map['item_id'] = Variable<String>(itemId);
+    map['play_session_id'] = Variable<String>(playSessionId);
     map['event_type'] = Variable<String>(eventType);
     map['position_ms'] = Variable<int>(positionMs);
     map['payload_json'] = Variable<String>(payloadJson);
@@ -2565,8 +3335,9 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
   PendingReportsCompanion toCompanion(bool nullToAbsent) {
     return PendingReportsCompanion(
       id: Value(id),
-      serverId: Value(serverId),
+      profileId: Value(profileId),
       itemId: Value(itemId),
+      playSessionId: Value(playSessionId),
       eventType: Value(eventType),
       positionMs: Value(positionMs),
       payloadJson: Value(payloadJson),
@@ -2581,8 +3352,9 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return PendingReport(
       id: serializer.fromJson<int>(json['id']),
-      serverId: serializer.fromJson<String>(json['serverId']),
+      profileId: serializer.fromJson<String>(json['profileId']),
       itemId: serializer.fromJson<String>(json['itemId']),
+      playSessionId: serializer.fromJson<String>(json['playSessionId']),
       eventType: serializer.fromJson<String>(json['eventType']),
       positionMs: serializer.fromJson<int>(json['positionMs']),
       payloadJson: serializer.fromJson<String>(json['payloadJson']),
@@ -2594,8 +3366,9 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
-      'serverId': serializer.toJson<String>(serverId),
+      'profileId': serializer.toJson<String>(profileId),
       'itemId': serializer.toJson<String>(itemId),
+      'playSessionId': serializer.toJson<String>(playSessionId),
       'eventType': serializer.toJson<String>(eventType),
       'positionMs': serializer.toJson<int>(positionMs),
       'payloadJson': serializer.toJson<String>(payloadJson),
@@ -2605,16 +3378,18 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
 
   PendingReport copyWith({
     int? id,
-    String? serverId,
+    String? profileId,
     String? itemId,
+    String? playSessionId,
     String? eventType,
     int? positionMs,
     String? payloadJson,
     DateTime? createdAt,
   }) => PendingReport(
     id: id ?? this.id,
-    serverId: serverId ?? this.serverId,
+    profileId: profileId ?? this.profileId,
     itemId: itemId ?? this.itemId,
+    playSessionId: playSessionId ?? this.playSessionId,
     eventType: eventType ?? this.eventType,
     positionMs: positionMs ?? this.positionMs,
     payloadJson: payloadJson ?? this.payloadJson,
@@ -2623,8 +3398,11 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
   PendingReport copyWithCompanion(PendingReportsCompanion data) {
     return PendingReport(
       id: data.id.present ? data.id.value : this.id,
-      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
       itemId: data.itemId.present ? data.itemId.value : this.itemId,
+      playSessionId: data.playSessionId.present
+          ? data.playSessionId.value
+          : this.playSessionId,
       eventType: data.eventType.present ? data.eventType.value : this.eventType,
       positionMs: data.positionMs.present
           ? data.positionMs.value
@@ -2640,8 +3418,9 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
   String toString() {
     return (StringBuffer('PendingReport(')
           ..write('id: $id, ')
-          ..write('serverId: $serverId, ')
+          ..write('profileId: $profileId, ')
           ..write('itemId: $itemId, ')
+          ..write('playSessionId: $playSessionId, ')
           ..write('eventType: $eventType, ')
           ..write('positionMs: $positionMs, ')
           ..write('payloadJson: $payloadJson, ')
@@ -2653,8 +3432,9 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
   @override
   int get hashCode => Object.hash(
     id,
-    serverId,
+    profileId,
     itemId,
+    playSessionId,
     eventType,
     positionMs,
     payloadJson,
@@ -2665,8 +3445,9 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
       identical(this, other) ||
       (other is PendingReport &&
           other.id == this.id &&
-          other.serverId == this.serverId &&
+          other.profileId == this.profileId &&
           other.itemId == this.itemId &&
+          other.playSessionId == this.playSessionId &&
           other.eventType == this.eventType &&
           other.positionMs == this.positionMs &&
           other.payloadJson == this.payloadJson &&
@@ -2675,16 +3456,18 @@ class PendingReport extends DataClass implements Insertable<PendingReport> {
 
 class PendingReportsCompanion extends UpdateCompanion<PendingReport> {
   final Value<int> id;
-  final Value<String> serverId;
+  final Value<String> profileId;
   final Value<String> itemId;
+  final Value<String> playSessionId;
   final Value<String> eventType;
   final Value<int> positionMs;
   final Value<String> payloadJson;
   final Value<DateTime> createdAt;
   const PendingReportsCompanion({
     this.id = const Value.absent(),
-    this.serverId = const Value.absent(),
+    this.profileId = const Value.absent(),
     this.itemId = const Value.absent(),
+    this.playSessionId = const Value.absent(),
     this.eventType = const Value.absent(),
     this.positionMs = const Value.absent(),
     this.payloadJson = const Value.absent(),
@@ -2692,22 +3475,25 @@ class PendingReportsCompanion extends UpdateCompanion<PendingReport> {
   });
   PendingReportsCompanion.insert({
     this.id = const Value.absent(),
-    required String serverId,
+    required String profileId,
     required String itemId,
+    required String playSessionId,
     required String eventType,
     required int positionMs,
     required String payloadJson,
     required DateTime createdAt,
-  }) : serverId = Value(serverId),
+  }) : profileId = Value(profileId),
        itemId = Value(itemId),
+       playSessionId = Value(playSessionId),
        eventType = Value(eventType),
        positionMs = Value(positionMs),
        payloadJson = Value(payloadJson),
        createdAt = Value(createdAt);
   static Insertable<PendingReport> custom({
     Expression<int>? id,
-    Expression<String>? serverId,
+    Expression<String>? profileId,
     Expression<String>? itemId,
+    Expression<String>? playSessionId,
     Expression<String>? eventType,
     Expression<int>? positionMs,
     Expression<String>? payloadJson,
@@ -2715,8 +3501,9 @@ class PendingReportsCompanion extends UpdateCompanion<PendingReport> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
-      if (serverId != null) 'server_id': serverId,
+      if (profileId != null) 'profile_id': profileId,
       if (itemId != null) 'item_id': itemId,
+      if (playSessionId != null) 'play_session_id': playSessionId,
       if (eventType != null) 'event_type': eventType,
       if (positionMs != null) 'position_ms': positionMs,
       if (payloadJson != null) 'payload_json': payloadJson,
@@ -2726,8 +3513,9 @@ class PendingReportsCompanion extends UpdateCompanion<PendingReport> {
 
   PendingReportsCompanion copyWith({
     Value<int>? id,
-    Value<String>? serverId,
+    Value<String>? profileId,
     Value<String>? itemId,
+    Value<String>? playSessionId,
     Value<String>? eventType,
     Value<int>? positionMs,
     Value<String>? payloadJson,
@@ -2735,8 +3523,9 @@ class PendingReportsCompanion extends UpdateCompanion<PendingReport> {
   }) {
     return PendingReportsCompanion(
       id: id ?? this.id,
-      serverId: serverId ?? this.serverId,
+      profileId: profileId ?? this.profileId,
       itemId: itemId ?? this.itemId,
+      playSessionId: playSessionId ?? this.playSessionId,
       eventType: eventType ?? this.eventType,
       positionMs: positionMs ?? this.positionMs,
       payloadJson: payloadJson ?? this.payloadJson,
@@ -2750,11 +3539,14 @@ class PendingReportsCompanion extends UpdateCompanion<PendingReport> {
     if (id.present) {
       map['id'] = Variable<int>(id.value);
     }
-    if (serverId.present) {
-      map['server_id'] = Variable<String>(serverId.value);
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
     }
     if (itemId.present) {
       map['item_id'] = Variable<String>(itemId.value);
+    }
+    if (playSessionId.present) {
+      map['play_session_id'] = Variable<String>(playSessionId.value);
     }
     if (eventType.present) {
       map['event_type'] = Variable<String>(eventType.value);
@@ -2775,8 +3567,9 @@ class PendingReportsCompanion extends UpdateCompanion<PendingReport> {
   String toString() {
     return (StringBuffer('PendingReportsCompanion(')
           ..write('id: $id, ')
-          ..write('serverId: $serverId, ')
+          ..write('profileId: $profileId, ')
           ..write('itemId: $itemId, ')
+          ..write('playSessionId: $playSessionId, ')
           ..write('eventType: $eventType, ')
           ..write('positionMs: $positionMs, ')
           ..write('payloadJson: $payloadJson, ')
@@ -2795,6 +3588,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $QueueEntriesTable queueEntries = $QueueEntriesTable(this);
+  late final $PlaybackStatesTable playbackStates = $PlaybackStatesTable(this);
   late final $PendingReportsTable pendingReports = $PendingReportsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -2805,13 +3599,15 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     cachedItems,
     downloadEntries,
     queueEntries,
+    playbackStates,
     pendingReports,
   ];
 }
 
 typedef $$ServerProfilesTableCreateCompanionBuilder =
     ServerProfilesCompanion Function({
-      required String id,
+      required String profileId,
+      required String serverId,
       required String baseUrl,
       required String name,
       required String userId,
@@ -2824,7 +3620,8 @@ typedef $$ServerProfilesTableCreateCompanionBuilder =
     });
 typedef $$ServerProfilesTableUpdateCompanionBuilder =
     ServerProfilesCompanion Function({
-      Value<String> id,
+      Value<String> profileId,
+      Value<String> serverId,
       Value<String> baseUrl,
       Value<String> name,
       Value<String> userId,
@@ -2845,8 +3642,13 @@ class $$ServerProfilesTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<String> get id => $composableBuilder(
-    column: $table.id,
+  ColumnFilters<String> get profileId => $composableBuilder(
+    column: $table.profileId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get serverId => $composableBuilder(
+    column: $table.serverId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2900,8 +3702,13 @@ class $$ServerProfilesTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<String> get id => $composableBuilder(
-    column: $table.id,
+  ColumnOrderings<String> get profileId => $composableBuilder(
+    column: $table.profileId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get serverId => $composableBuilder(
+    column: $table.serverId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -2955,8 +3762,11 @@ class $$ServerProfilesTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<String> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
+  GeneratedColumn<String> get profileId =>
+      $composableBuilder(column: $table.profileId, builder: (column) => column);
+
+  GeneratedColumn<String> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
 
   GeneratedColumn<String> get baseUrl =>
       $composableBuilder(column: $table.baseUrl, builder: (column) => column);
@@ -3022,7 +3832,8 @@ class $$ServerProfilesTableTableManager
               $$ServerProfilesTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<String> id = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> serverId = const Value.absent(),
                 Value<String> baseUrl = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String> userId = const Value.absent(),
@@ -3033,7 +3844,8 @@ class $$ServerProfilesTableTableManager
                 Value<DateTime> lastUsedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ServerProfilesCompanion(
-                id: id,
+                profileId: profileId,
+                serverId: serverId,
                 baseUrl: baseUrl,
                 name: name,
                 userId: userId,
@@ -3046,7 +3858,8 @@ class $$ServerProfilesTableTableManager
               ),
           createCompanionCallback:
               ({
-                required String id,
+                required String profileId,
+                required String serverId,
                 required String baseUrl,
                 required String name,
                 required String userId,
@@ -3057,7 +3870,8 @@ class $$ServerProfilesTableTableManager
                 required DateTime lastUsedAt,
                 Value<int> rowid = const Value.absent(),
               }) => ServerProfilesCompanion.insert(
-                id: id,
+                profileId: profileId,
+                serverId: serverId,
                 baseUrl: baseUrl,
                 name: name,
                 userId: userId,
@@ -3095,38 +3909,46 @@ typedef $$ServerProfilesTableProcessedTableManager =
     >;
 typedef $$CachedItemsTableCreateCompanionBuilder =
     CachedItemsCompanion Function({
+      required String profileId,
       required String serverId,
       required String itemId,
       required String itemType,
       required String name,
       Value<String?> subtitle,
       Value<String?> albumId,
+      Value<String?> albumName,
       Value<String?> artistId,
+      Value<String> artistsJson,
       Value<String?> imageUrl,
       Value<int> durationMs,
       Value<int?> indexNumber,
+      Value<int?> discNumber,
       Value<int?> productionYear,
       Value<bool> isFavorite,
-      Value<bool> isDownloaded,
+      Value<bool> hasPrimaryImage,
       Value<String?> container,
       required DateTime updatedAt,
       Value<int> rowid,
     });
 typedef $$CachedItemsTableUpdateCompanionBuilder =
     CachedItemsCompanion Function({
+      Value<String> profileId,
       Value<String> serverId,
       Value<String> itemId,
       Value<String> itemType,
       Value<String> name,
       Value<String?> subtitle,
       Value<String?> albumId,
+      Value<String?> albumName,
       Value<String?> artistId,
+      Value<String> artistsJson,
       Value<String?> imageUrl,
       Value<int> durationMs,
       Value<int?> indexNumber,
+      Value<int?> discNumber,
       Value<int?> productionYear,
       Value<bool> isFavorite,
-      Value<bool> isDownloaded,
+      Value<bool> hasPrimaryImage,
       Value<String?> container,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -3141,6 +3963,11 @@ class $$CachedItemsTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnFilters<String> get profileId => $composableBuilder(
+    column: $table.profileId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get serverId => $composableBuilder(
     column: $table.serverId,
     builder: (column) => ColumnFilters(column),
@@ -3171,8 +3998,18 @@ class $$CachedItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get albumName => $composableBuilder(
+    column: $table.albumName,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get artistId => $composableBuilder(
     column: $table.artistId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get artistsJson => $composableBuilder(
+    column: $table.artistsJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3191,6 +4028,11 @@ class $$CachedItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get discNumber => $composableBuilder(
+    column: $table.discNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<int> get productionYear => $composableBuilder(
     column: $table.productionYear,
     builder: (column) => ColumnFilters(column),
@@ -3201,8 +4043,8 @@ class $$CachedItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<bool> get isDownloaded => $composableBuilder(
-    column: $table.isDownloaded,
+  ColumnFilters<bool> get hasPrimaryImage => $composableBuilder(
+    column: $table.hasPrimaryImage,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3226,6 +4068,11 @@ class $$CachedItemsTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<String> get profileId => $composableBuilder(
+    column: $table.profileId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get serverId => $composableBuilder(
     column: $table.serverId,
     builder: (column) => ColumnOrderings(column),
@@ -3256,8 +4103,18 @@ class $$CachedItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get albumName => $composableBuilder(
+    column: $table.albumName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get artistId => $composableBuilder(
     column: $table.artistId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get artistsJson => $composableBuilder(
+    column: $table.artistsJson,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3276,6 +4133,11 @@ class $$CachedItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get discNumber => $composableBuilder(
+    column: $table.discNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get productionYear => $composableBuilder(
     column: $table.productionYear,
     builder: (column) => ColumnOrderings(column),
@@ -3286,8 +4148,8 @@ class $$CachedItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<bool> get isDownloaded => $composableBuilder(
-    column: $table.isDownloaded,
+  ColumnOrderings<bool> get hasPrimaryImage => $composableBuilder(
+    column: $table.hasPrimaryImage,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3311,6 +4173,9 @@ class $$CachedItemsTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumn<String> get profileId =>
+      $composableBuilder(column: $table.profileId, builder: (column) => column);
+
   GeneratedColumn<String> get serverId =>
       $composableBuilder(column: $table.serverId, builder: (column) => column);
 
@@ -3329,8 +4194,16 @@ class $$CachedItemsTableAnnotationComposer
   GeneratedColumn<String> get albumId =>
       $composableBuilder(column: $table.albumId, builder: (column) => column);
 
+  GeneratedColumn<String> get albumName =>
+      $composableBuilder(column: $table.albumName, builder: (column) => column);
+
   GeneratedColumn<String> get artistId =>
       $composableBuilder(column: $table.artistId, builder: (column) => column);
+
+  GeneratedColumn<String> get artistsJson => $composableBuilder(
+    column: $table.artistsJson,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get imageUrl =>
       $composableBuilder(column: $table.imageUrl, builder: (column) => column);
@@ -3345,6 +4218,11 @@ class $$CachedItemsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get discNumber => $composableBuilder(
+    column: $table.discNumber,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get productionYear => $composableBuilder(
     column: $table.productionYear,
     builder: (column) => column,
@@ -3355,8 +4233,8 @@ class $$CachedItemsTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<bool> get isDownloaded => $composableBuilder(
-    column: $table.isDownloaded,
+  GeneratedColumn<bool> get hasPrimaryImage => $composableBuilder(
+    column: $table.hasPrimaryImage,
     builder: (column) => column,
   );
 
@@ -3398,72 +4276,88 @@ class $$CachedItemsTableTableManager
               $$CachedItemsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
+                Value<String> profileId = const Value.absent(),
                 Value<String> serverId = const Value.absent(),
                 Value<String> itemId = const Value.absent(),
                 Value<String> itemType = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String?> subtitle = const Value.absent(),
                 Value<String?> albumId = const Value.absent(),
+                Value<String?> albumName = const Value.absent(),
                 Value<String?> artistId = const Value.absent(),
+                Value<String> artistsJson = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
                 Value<int> durationMs = const Value.absent(),
                 Value<int?> indexNumber = const Value.absent(),
+                Value<int?> discNumber = const Value.absent(),
                 Value<int?> productionYear = const Value.absent(),
                 Value<bool> isFavorite = const Value.absent(),
-                Value<bool> isDownloaded = const Value.absent(),
+                Value<bool> hasPrimaryImage = const Value.absent(),
                 Value<String?> container = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedItemsCompanion(
+                profileId: profileId,
                 serverId: serverId,
                 itemId: itemId,
                 itemType: itemType,
                 name: name,
                 subtitle: subtitle,
                 albumId: albumId,
+                albumName: albumName,
                 artistId: artistId,
+                artistsJson: artistsJson,
                 imageUrl: imageUrl,
                 durationMs: durationMs,
                 indexNumber: indexNumber,
+                discNumber: discNumber,
                 productionYear: productionYear,
                 isFavorite: isFavorite,
-                isDownloaded: isDownloaded,
+                hasPrimaryImage: hasPrimaryImage,
                 container: container,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
+                required String profileId,
                 required String serverId,
                 required String itemId,
                 required String itemType,
                 required String name,
                 Value<String?> subtitle = const Value.absent(),
                 Value<String?> albumId = const Value.absent(),
+                Value<String?> albumName = const Value.absent(),
                 Value<String?> artistId = const Value.absent(),
+                Value<String> artistsJson = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
                 Value<int> durationMs = const Value.absent(),
                 Value<int?> indexNumber = const Value.absent(),
+                Value<int?> discNumber = const Value.absent(),
                 Value<int?> productionYear = const Value.absent(),
                 Value<bool> isFavorite = const Value.absent(),
-                Value<bool> isDownloaded = const Value.absent(),
+                Value<bool> hasPrimaryImage = const Value.absent(),
                 Value<String?> container = const Value.absent(),
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
               }) => CachedItemsCompanion.insert(
+                profileId: profileId,
                 serverId: serverId,
                 itemId: itemId,
                 itemType: itemType,
                 name: name,
                 subtitle: subtitle,
                 albumId: albumId,
+                albumName: albumName,
                 artistId: artistId,
+                artistsJson: artistsJson,
                 imageUrl: imageUrl,
                 durationMs: durationMs,
                 indexNumber: indexNumber,
+                discNumber: discNumber,
                 productionYear: productionYear,
                 isFavorite: isFavorite,
-                isDownloaded: isDownloaded,
+                hasPrimaryImage: hasPrimaryImage,
                 container: container,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -3496,26 +4390,28 @@ typedef $$CachedItemsTableProcessedTableManager =
 typedef $$DownloadEntriesTableCreateCompanionBuilder =
     DownloadEntriesCompanion Function({
       required String id,
-      required String serverId,
+      required String profileId,
       required String itemId,
       required String status,
       Value<String?> filePath,
       Value<double> progress,
       Value<int> sizeBytes,
       Value<String?> checksum,
+      Value<DateTime?> lastPlayedAt,
       required DateTime updatedAt,
       Value<int> rowid,
     });
 typedef $$DownloadEntriesTableUpdateCompanionBuilder =
     DownloadEntriesCompanion Function({
       Value<String> id,
-      Value<String> serverId,
+      Value<String> profileId,
       Value<String> itemId,
       Value<String> status,
       Value<String?> filePath,
       Value<double> progress,
       Value<int> sizeBytes,
       Value<String?> checksum,
+      Value<DateTime?> lastPlayedAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
     });
@@ -3534,8 +4430,8 @@ class $$DownloadEntriesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get serverId => $composableBuilder(
-    column: $table.serverId,
+  ColumnFilters<String> get profileId => $composableBuilder(
+    column: $table.profileId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3569,6 +4465,11 @@ class $$DownloadEntriesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<DateTime> get lastPlayedAt => $composableBuilder(
+    column: $table.lastPlayedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
@@ -3589,8 +4490,8 @@ class $$DownloadEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get serverId => $composableBuilder(
-    column: $table.serverId,
+  ColumnOrderings<String> get profileId => $composableBuilder(
+    column: $table.profileId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3624,6 +4525,11 @@ class $$DownloadEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get lastPlayedAt => $composableBuilder(
+    column: $table.lastPlayedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -3642,8 +4548,8 @@ class $$DownloadEntriesTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get serverId =>
-      $composableBuilder(column: $table.serverId, builder: (column) => column);
+  GeneratedColumn<String> get profileId =>
+      $composableBuilder(column: $table.profileId, builder: (column) => column);
 
   GeneratedColumn<String> get itemId =>
       $composableBuilder(column: $table.itemId, builder: (column) => column);
@@ -3662,6 +4568,11 @@ class $$DownloadEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get checksum =>
       $composableBuilder(column: $table.checksum, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastPlayedAt => $composableBuilder(
+    column: $table.lastPlayedAt,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -3701,48 +4612,52 @@ class $$DownloadEntriesTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
-                Value<String> serverId = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
                 Value<String> itemId = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> filePath = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<int> sizeBytes = const Value.absent(),
                 Value<String?> checksum = const Value.absent(),
+                Value<DateTime?> lastPlayedAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DownloadEntriesCompanion(
                 id: id,
-                serverId: serverId,
+                profileId: profileId,
                 itemId: itemId,
                 status: status,
                 filePath: filePath,
                 progress: progress,
                 sizeBytes: sizeBytes,
                 checksum: checksum,
+                lastPlayedAt: lastPlayedAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required String id,
-                required String serverId,
+                required String profileId,
                 required String itemId,
                 required String status,
                 Value<String?> filePath = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<int> sizeBytes = const Value.absent(),
                 Value<String?> checksum = const Value.absent(),
+                Value<DateTime?> lastPlayedAt = const Value.absent(),
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
               }) => DownloadEntriesCompanion.insert(
                 id: id,
-                serverId: serverId,
+                profileId: profileId,
                 itemId: itemId,
                 status: status,
                 filePath: filePath,
                 progress: progress,
                 sizeBytes: sizeBytes,
                 checksum: checksum,
+                lastPlayedAt: lastPlayedAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),
@@ -3773,7 +4688,7 @@ typedef $$DownloadEntriesTableProcessedTableManager =
     >;
 typedef $$QueueEntriesTableCreateCompanionBuilder =
     QueueEntriesCompanion Function({
-      required String serverId,
+      required String profileId,
       required int queueIndex,
       required String itemId,
       Value<bool> isCurrent,
@@ -3781,7 +4696,7 @@ typedef $$QueueEntriesTableCreateCompanionBuilder =
     });
 typedef $$QueueEntriesTableUpdateCompanionBuilder =
     QueueEntriesCompanion Function({
-      Value<String> serverId,
+      Value<String> profileId,
       Value<int> queueIndex,
       Value<String> itemId,
       Value<bool> isCurrent,
@@ -3797,8 +4712,8 @@ class $$QueueEntriesTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<String> get serverId => $composableBuilder(
-    column: $table.serverId,
+  ColumnFilters<String> get profileId => $composableBuilder(
+    column: $table.profileId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3827,8 +4742,8 @@ class $$QueueEntriesTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<String> get serverId => $composableBuilder(
-    column: $table.serverId,
+  ColumnOrderings<String> get profileId => $composableBuilder(
+    column: $table.profileId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3857,8 +4772,8 @@ class $$QueueEntriesTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<String> get serverId =>
-      $composableBuilder(column: $table.serverId, builder: (column) => column);
+  GeneratedColumn<String> get profileId =>
+      $composableBuilder(column: $table.profileId, builder: (column) => column);
 
   GeneratedColumn<int> get queueIndex => $composableBuilder(
     column: $table.queueIndex,
@@ -3903,13 +4818,13 @@ class $$QueueEntriesTableTableManager
               $$QueueEntriesTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<String> serverId = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
                 Value<int> queueIndex = const Value.absent(),
                 Value<String> itemId = const Value.absent(),
                 Value<bool> isCurrent = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => QueueEntriesCompanion(
-                serverId: serverId,
+                profileId: profileId,
                 queueIndex: queueIndex,
                 itemId: itemId,
                 isCurrent: isCurrent,
@@ -3917,13 +4832,13 @@ class $$QueueEntriesTableTableManager
               ),
           createCompanionCallback:
               ({
-                required String serverId,
+                required String profileId,
                 required int queueIndex,
                 required String itemId,
                 Value<bool> isCurrent = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => QueueEntriesCompanion.insert(
-                serverId: serverId,
+                profileId: profileId,
                 queueIndex: queueIndex,
                 itemId: itemId,
                 isCurrent: isCurrent,
@@ -3954,11 +4869,241 @@ typedef $$QueueEntriesTableProcessedTableManager =
       QueueEntry,
       PrefetchHooks Function()
     >;
+typedef $$PlaybackStatesTableCreateCompanionBuilder =
+    PlaybackStatesCompanion Function({
+      required String profileId,
+      Value<int> currentIndex,
+      Value<int> positionMs,
+      Value<bool> shuffle,
+      Value<String> repeatMode,
+      Value<DateTime?> sleepDeadline,
+      Value<int> rowid,
+    });
+typedef $$PlaybackStatesTableUpdateCompanionBuilder =
+    PlaybackStatesCompanion Function({
+      Value<String> profileId,
+      Value<int> currentIndex,
+      Value<int> positionMs,
+      Value<bool> shuffle,
+      Value<String> repeatMode,
+      Value<DateTime?> sleepDeadline,
+      Value<int> rowid,
+    });
+
+class $$PlaybackStatesTableFilterComposer
+    extends Composer<_$AppDatabase, $PlaybackStatesTable> {
+  $$PlaybackStatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get profileId => $composableBuilder(
+    column: $table.profileId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get currentIndex => $composableBuilder(
+    column: $table.currentIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get positionMs => $composableBuilder(
+    column: $table.positionMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get shuffle => $composableBuilder(
+    column: $table.shuffle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get repeatMode => $composableBuilder(
+    column: $table.repeatMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get sleepDeadline => $composableBuilder(
+    column: $table.sleepDeadline,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PlaybackStatesTableOrderingComposer
+    extends Composer<_$AppDatabase, $PlaybackStatesTable> {
+  $$PlaybackStatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get profileId => $composableBuilder(
+    column: $table.profileId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get currentIndex => $composableBuilder(
+    column: $table.currentIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get positionMs => $composableBuilder(
+    column: $table.positionMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get shuffle => $composableBuilder(
+    column: $table.shuffle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get repeatMode => $composableBuilder(
+    column: $table.repeatMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get sleepDeadline => $composableBuilder(
+    column: $table.sleepDeadline,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PlaybackStatesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PlaybackStatesTable> {
+  $$PlaybackStatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get profileId =>
+      $composableBuilder(column: $table.profileId, builder: (column) => column);
+
+  GeneratedColumn<int> get currentIndex => $composableBuilder(
+    column: $table.currentIndex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get positionMs => $composableBuilder(
+    column: $table.positionMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get shuffle =>
+      $composableBuilder(column: $table.shuffle, builder: (column) => column);
+
+  GeneratedColumn<String> get repeatMode => $composableBuilder(
+    column: $table.repeatMode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get sleepDeadline => $composableBuilder(
+    column: $table.sleepDeadline,
+    builder: (column) => column,
+  );
+}
+
+class $$PlaybackStatesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PlaybackStatesTable,
+          PlaybackState,
+          $$PlaybackStatesTableFilterComposer,
+          $$PlaybackStatesTableOrderingComposer,
+          $$PlaybackStatesTableAnnotationComposer,
+          $$PlaybackStatesTableCreateCompanionBuilder,
+          $$PlaybackStatesTableUpdateCompanionBuilder,
+          (
+            PlaybackState,
+            BaseReferences<_$AppDatabase, $PlaybackStatesTable, PlaybackState>,
+          ),
+          PlaybackState,
+          PrefetchHooks Function()
+        > {
+  $$PlaybackStatesTableTableManager(
+    _$AppDatabase db,
+    $PlaybackStatesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PlaybackStatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PlaybackStatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PlaybackStatesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> profileId = const Value.absent(),
+                Value<int> currentIndex = const Value.absent(),
+                Value<int> positionMs = const Value.absent(),
+                Value<bool> shuffle = const Value.absent(),
+                Value<String> repeatMode = const Value.absent(),
+                Value<DateTime?> sleepDeadline = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PlaybackStatesCompanion(
+                profileId: profileId,
+                currentIndex: currentIndex,
+                positionMs: positionMs,
+                shuffle: shuffle,
+                repeatMode: repeatMode,
+                sleepDeadline: sleepDeadline,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String profileId,
+                Value<int> currentIndex = const Value.absent(),
+                Value<int> positionMs = const Value.absent(),
+                Value<bool> shuffle = const Value.absent(),
+                Value<String> repeatMode = const Value.absent(),
+                Value<DateTime?> sleepDeadline = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PlaybackStatesCompanion.insert(
+                profileId: profileId,
+                currentIndex: currentIndex,
+                positionMs: positionMs,
+                shuffle: shuffle,
+                repeatMode: repeatMode,
+                sleepDeadline: sleepDeadline,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PlaybackStatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PlaybackStatesTable,
+      PlaybackState,
+      $$PlaybackStatesTableFilterComposer,
+      $$PlaybackStatesTableOrderingComposer,
+      $$PlaybackStatesTableAnnotationComposer,
+      $$PlaybackStatesTableCreateCompanionBuilder,
+      $$PlaybackStatesTableUpdateCompanionBuilder,
+      (
+        PlaybackState,
+        BaseReferences<_$AppDatabase, $PlaybackStatesTable, PlaybackState>,
+      ),
+      PlaybackState,
+      PrefetchHooks Function()
+    >;
 typedef $$PendingReportsTableCreateCompanionBuilder =
     PendingReportsCompanion Function({
       Value<int> id,
-      required String serverId,
+      required String profileId,
       required String itemId,
+      required String playSessionId,
       required String eventType,
       required int positionMs,
       required String payloadJson,
@@ -3967,8 +5112,9 @@ typedef $$PendingReportsTableCreateCompanionBuilder =
 typedef $$PendingReportsTableUpdateCompanionBuilder =
     PendingReportsCompanion Function({
       Value<int> id,
-      Value<String> serverId,
+      Value<String> profileId,
       Value<String> itemId,
+      Value<String> playSessionId,
       Value<String> eventType,
       Value<int> positionMs,
       Value<String> payloadJson,
@@ -3989,13 +5135,18 @@ class $$PendingReportsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get serverId => $composableBuilder(
-    column: $table.serverId,
+  ColumnFilters<String> get profileId => $composableBuilder(
+    column: $table.profileId,
     builder: (column) => ColumnFilters(column),
   );
 
   ColumnFilters<String> get itemId => $composableBuilder(
     column: $table.itemId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get playSessionId => $composableBuilder(
+    column: $table.playSessionId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4034,13 +5185,18 @@ class $$PendingReportsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get serverId => $composableBuilder(
-    column: $table.serverId,
+  ColumnOrderings<String> get profileId => $composableBuilder(
+    column: $table.profileId,
     builder: (column) => ColumnOrderings(column),
   );
 
   ColumnOrderings<String> get itemId => $composableBuilder(
     column: $table.itemId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get playSessionId => $composableBuilder(
+    column: $table.playSessionId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4077,11 +5233,16 @@ class $$PendingReportsTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get serverId =>
-      $composableBuilder(column: $table.serverId, builder: (column) => column);
+  GeneratedColumn<String> get profileId =>
+      $composableBuilder(column: $table.profileId, builder: (column) => column);
 
   GeneratedColumn<String> get itemId =>
       $composableBuilder(column: $table.itemId, builder: (column) => column);
+
+  GeneratedColumn<String> get playSessionId => $composableBuilder(
+    column: $table.playSessionId,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get eventType =>
       $composableBuilder(column: $table.eventType, builder: (column) => column);
@@ -4134,16 +5295,18 @@ class $$PendingReportsTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                Value<String> serverId = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
                 Value<String> itemId = const Value.absent(),
+                Value<String> playSessionId = const Value.absent(),
                 Value<String> eventType = const Value.absent(),
                 Value<int> positionMs = const Value.absent(),
                 Value<String> payloadJson = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => PendingReportsCompanion(
                 id: id,
-                serverId: serverId,
+                profileId: profileId,
                 itemId: itemId,
+                playSessionId: playSessionId,
                 eventType: eventType,
                 positionMs: positionMs,
                 payloadJson: payloadJson,
@@ -4152,16 +5315,18 @@ class $$PendingReportsTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                required String serverId,
+                required String profileId,
                 required String itemId,
+                required String playSessionId,
                 required String eventType,
                 required int positionMs,
                 required String payloadJson,
                 required DateTime createdAt,
               }) => PendingReportsCompanion.insert(
                 id: id,
-                serverId: serverId,
+                profileId: profileId,
                 itemId: itemId,
+                playSessionId: playSessionId,
                 eventType: eventType,
                 positionMs: positionMs,
                 payloadJson: payloadJson,
@@ -4204,6 +5369,8 @@ class $AppDatabaseManager {
       $$DownloadEntriesTableTableManager(_db, _db.downloadEntries);
   $$QueueEntriesTableTableManager get queueEntries =>
       $$QueueEntriesTableTableManager(_db, _db.queueEntries);
+  $$PlaybackStatesTableTableManager get playbackStates =>
+      $$PlaybackStatesTableTableManager(_db, _db.playbackStates);
   $$PendingReportsTableTableManager get pendingReports =>
       $$PendingReportsTableTableManager(_db, _db.pendingReports);
 }

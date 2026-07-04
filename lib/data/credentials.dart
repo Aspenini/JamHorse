@@ -15,6 +15,9 @@ class SecureCredentialStore implements CredentialStore {
   final FlutterSecureStorage _storage;
 
   @override
+  Future<void> deleteAll() => _storage.deleteAll();
+
+  @override
   Future<void> deleteToken(String profileId) {
     return _storage.delete(key: _key(profileId));
   }

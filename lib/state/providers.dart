@@ -54,13 +54,55 @@ final downloadManagerProvider = Provider<DownloadManager>((ref) {
   return manager;
 });
 
-final platformMediaBridgeProvider = Provider<PlatformMediaBridge>(
-  (ref) => const NativePlatformMediaBridge(),
-);
+final platformMediaBridgeProvider = Provider<PlatformMediaBridge>((ref) {
+  final bridge = NativePlatformMediaBridge();
+  var previous = bridge.remoteSession;
+  final remoteSubscription = bridge.remoteSessionChanges.listen((
+    current,
+  ) async {
+    if (previous.connected && !current.connected) {
+      final coordinator = ref.read(playbackCoordinatorProvider);
+      await coordinator.seek(previous.position);
+      await coordinator.pause();
+    }
+    previous = current;
+  });
+  unawaited(bridge.initialize());
+  ref.onDispose(() async {
+    await remoteSubscription.cancel();
+    await bridge.dispose();
+  });
+  return bridge;
+});
+
+final platformCapabilitiesProvider = StreamProvider<PlatformCapabilities>((
+  ref,
+) {
+  return ref.watch(platformMediaBridgeProvider).capabilityChanges;
+});
+
+final castTargetsProvider = StreamProvider<List<CastTarget>>((ref) {
+  return ref.watch(platformMediaBridgeProvider).castTargets;
+});
+
+final remotePlaybackProvider = StreamProvider<RemotePlaybackState>((ref) {
+  return ref.watch(platformMediaBridgeProvider).remoteSessionChanges;
+});
 
 final appControllerProvider = NotifierProvider<AppController, AppState>(
   AppController.new,
 );
+
+final searchQueryProvider = NotifierProvider<SearchQueryController, String>(
+  SearchQueryController.new,
+);
+
+class SearchQueryController extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void set(String value) => state = value;
+}
 
 final playbackSnapshotProvider = StreamProvider<PlaybackSnapshot>((ref) {
   final player = ref.watch(playbackCoordinatorProvider);
@@ -71,11 +113,8 @@ final downloadRecordsProvider = StreamProvider<List<DownloadRecord>>((ref) {
   return ref.watch(downloadManagerProvider).records;
 });
 
-final lyricsProvider =
-    FutureProvider.autoDispose.family<List<LyricsLine>, String>((
-      ref,
-      itemId,
-    ) {
+final lyricsProvider = FutureProvider.autoDispose
+    .family<List<LyricsLine>, String>((ref, itemId) {
       final session = ref.watch(
         appControllerProvider.select((state) => state.session),
       );
@@ -87,9 +126,14 @@ final lyricsProvider =
 /// these instead of streaming.
 final downloadedItemIdsProvider = Provider<Set<String>>((ref) {
   final records = ref.watch(downloadRecordsProvider).value ?? const [];
+  final profileId = ref.watch(
+    appControllerProvider.select((state) => state.session?.profile.profileId),
+  );
   return {
     for (final record in records)
-      if (record.status == DownloadStatus.complete) record.itemId,
+      if (record.profileId == profileId &&
+          record.status == DownloadStatus.complete)
+        record.itemId,
   };
 });
 
@@ -99,29 +143,35 @@ final recentlyAddedProvider = FutureProvider<List<LibraryItem>>((ref) {
     appControllerProvider.select((state) => state.session),
   );
   if (session == null) return Future.value(const []);
-  return ref.watch(jellyfinGatewayProvider).fetchLibrary(
-    session,
-    types: const {LibraryItemType.album},
-    sortBy: 'DateCreated',
-    sortOrder: 'Descending',
-    limit: 20,
-  );
+  return ref
+      .watch(jellyfinGatewayProvider)
+      .fetchLibrary(
+        session,
+        types: const {LibraryItemType.album},
+        sortBy: 'DateCreated',
+        sortOrder: 'Descending',
+        limit: 20,
+      );
 });
 
 /// Albums within one genre, for the per-genre Home rows.
-final genreAlbumsProvider =
-    FutureProvider.family<List<LibraryItem>, String>((ref, genreId) {
-      final session = ref.watch(
-        appControllerProvider.select((state) => state.session),
-      );
-      if (session == null) return Future.value(const []);
-      return ref.watch(jellyfinGatewayProvider).fetchLibrary(
+final genreAlbumsProvider = FutureProvider.family<List<LibraryItem>, String>((
+  ref,
+  genreId,
+) {
+  final session = ref.watch(
+    appControllerProvider.select((state) => state.session),
+  );
+  if (session == null) return Future.value(const []);
+  return ref
+      .watch(jellyfinGatewayProvider)
+      .fetchLibrary(
         session,
         types: const {LibraryItemType.album},
         parentId: genreId,
         limit: 20,
       );
-    });
+});
 
 /// Album names by id, for the ALBUM column in track tables.
 final albumNamesProvider = Provider<Map<String, String>>((ref) {
@@ -137,22 +187,21 @@ final albumNamesProvider = Provider<Map<String, String>>((ref) {
 /// Tracks inside an album or playlist, fetched from the server in play
 /// order. Used by detail views whose children are not in the synced
 /// library snapshot (playlist entries in particular).
-final childrenProvider =
-    FutureProvider.autoDispose.family<List<LibraryItem>, String>((
-      ref,
-      parentId,
-    ) {
+final childrenProvider = FutureProvider.autoDispose
+    .family<List<LibraryItem>, String>((ref, parentId) {
       final session = ref.watch(
         appControllerProvider.select((state) => state.session),
       );
       if (session == null) return Future.value(const []);
-      return ref.watch(jellyfinGatewayProvider).fetchLibrary(
-        session,
-        types: const {LibraryItemType.track},
-        parentId: parentId,
-        sortBy: 'ParentIndexNumber,IndexNumber,SortName',
-        limit: 5000,
-      );
+      return ref
+          .watch(jellyfinGatewayProvider)
+          .fetchLibrary(
+            session,
+            types: const {LibraryItemType.track},
+            parentId: parentId,
+            sortBy: 'ParentIndexNumber,IndexNumber,SortName',
+            limit: 5000,
+          );
     });
 
 class AppState {
@@ -205,12 +254,13 @@ class AppState {
 
 class AppController extends Notifier<AppState> {
   bool _restoring = false;
+  int _sessionEpoch = 0;
+  String? _syncingProfileId;
 
   JellyfinGateway get _gateway => ref.read(jellyfinGatewayProvider);
   LibraryRepository get _library => ref.read(libraryRepositoryProvider);
   ProfileRepository get _profiles => ref.read(profileRepositoryProvider);
-  PlaybackCoordinator get _player =>
-      ref.read(playbackCoordinatorProvider);
+  PlaybackCoordinator get _player => ref.read(playbackCoordinatorProvider);
 
   @override
   AppState build() {
@@ -227,10 +277,7 @@ class AppController extends Notifier<AppState> {
     required String password,
     required bool allowPrivateHttp,
   }) async {
-    state = state.copyWith(
-      connecting: true,
-      clearError: true,
-    );
+    state = state.copyWith(connecting: true, clearError: true);
     try {
       final prefs = await SharedPreferences.getInstance();
       var deviceId = prefs.getString('deviceId');
@@ -246,6 +293,7 @@ class AppController extends Notifier<AppState> {
       );
       await _profiles.save(session);
       final profiles = await _profiles.all();
+      _sessionEpoch++;
       state = state.copyWith(
         session: session,
         profiles: profiles,
@@ -254,29 +302,48 @@ class AppController extends Notifier<AppState> {
       );
       await synchronize();
     } catch (error) {
-      state = state.copyWith(
-        connecting: false,
-        error: _friendlyError(error),
-      );
+      state = state.copyWith(connecting: false, error: _friendlyError(error));
       rethrow;
     }
   }
 
   Future<void> synchronize() async {
     final session = state.session;
-    if (session == null || state.syncing) return;
+    if (session == null || _syncingProfileId == session.profile.profileId) {
+      return;
+    }
+    final epoch = _sessionEpoch;
+    _syncingProfileId = session.profile.profileId;
     state = state.copyWith(syncing: true, clearError: true);
     try {
-      final items = await _library.synchronize(session);
+      final context = OperationContext(
+        profileId: session.profile.profileId,
+        generation: epoch,
+        isCurrentCallback: () => _isCurrent(session, epoch),
+      );
+      final items = await _library.synchronize(session, context: context);
+      if (!_isCurrent(session, epoch)) return;
+      await _player.setBrowseLibrary(session, items);
       state = state.copyWith(library: items, syncing: false);
     } catch (error) {
-      final cached = await _library.readCachedLibrary(session.profile.id);
+      if (!_isCurrent(session, epoch)) return;
+      final cached = await _library.readCachedLibrary(
+        session.profile.profileId,
+      );
+      if (!_isCurrent(session, epoch)) return;
       state = state.copyWith(
         library: cached,
         syncing: false,
         error: cached.isEmpty ? _friendlyError(error) : null,
         clearError: cached.isNotEmpty,
       );
+    } finally {
+      if (_syncingProfileId == session.profile.profileId) {
+        _syncingProfileId = null;
+        if (_isCurrent(session, epoch) && state.syncing) {
+          state = state.copyWith(syncing: false);
+        }
+      }
     }
   }
 
@@ -284,20 +351,23 @@ class AppController extends Notifier<AppState> {
 
   Future<void> search(String query) async {
     final session = state.session;
+    final sessionEpoch = _sessionEpoch;
     final trimmed = query.trim();
     final epoch = ++_searchEpoch;
     if (session == null || trimmed.isEmpty) {
       state = state.copyWith(searchResults: const []);
       return;
     }
-    final local = state.library.where((item) {
-      final haystack = '${item.name} ${item.subtitle ?? ''}'.toLowerCase();
-      return haystack.contains(trimmed.toLowerCase());
-    }).toList(growable: false);
+    final local = state.library
+        .where((item) {
+          final haystack = '${item.name} ${item.subtitle ?? ''}'.toLowerCase();
+          return haystack.contains(trimmed.toLowerCase());
+        })
+        .toList(growable: false);
     state = state.copyWith(searchResults: local);
     try {
       final remote = await _library.search(session, trimmed);
-      if (epoch == _searchEpoch) {
+      if (epoch == _searchEpoch && _isCurrent(session, sessionEpoch)) {
         state = state.copyWith(searchResults: remote);
       }
     } catch (_) {
@@ -308,6 +378,7 @@ class AppController extends Notifier<AppState> {
   Future<void> play(LibraryItem selected) async {
     final session = state.session;
     if (session == null) return;
+    final epoch = _sessionEpoch;
     var tracks = <LibraryItem>[];
     if (selected.type == LibraryItemType.track) {
       tracks = state.library
@@ -324,16 +395,13 @@ class AppController extends Notifier<AppState> {
         sortBy: 'ParentIndexNumber,IndexNumber,SortName',
         limit: 5000,
       );
+      if (!_isCurrent(session, epoch)) return;
     }
     if (tracks.isEmpty) return;
     final index = selected.type == LibraryItemType.track
         ? tracks.indexWhere((item) => item.id == selected.id)
         : 0;
-    await _player.load(
-      session,
-      tracks,
-      initialIndex: index < 0 ? 0 : index,
-    );
+    await _player.load(session, tracks, initialIndex: index < 0 ? 0 : index);
   }
 
   /// Plays an explicit list of tracks as the queue, e.g. Liked Songs or a
@@ -355,10 +423,11 @@ class AppController extends Notifier<AppState> {
   Future<void> shuffleAll() async {
     final session = state.session;
     if (session == null) return;
-    final tracks = state.library
-        .where((item) => item.type == LibraryItemType.track)
-        .toList()
-      ..shuffle();
+    final tracks =
+        state.library
+            .where((item) => item.type == LibraryItemType.track)
+            .toList()
+          ..shuffle();
     if (tracks.isEmpty) return;
     await _player.load(session, tracks);
   }
@@ -366,19 +435,27 @@ class AppController extends Notifier<AppState> {
   Future<void> toggleFavorite(LibraryItem item) async {
     final session = state.session;
     if (session == null) return;
+    final epoch = _sessionEpoch;
     final next = !item.isFavorite;
     final optimistic = state.library
         .map(
-          (entry) => entry.id == item.id
-              ? entry.copyWith(isFavorite: next)
-              : entry,
+          (entry) =>
+              entry.id == item.id ? entry.copyWith(isFavorite: next) : entry,
         )
         .toList(growable: false);
     state = state.copyWith(library: optimistic);
+    await _player.setBrowseLibrary(session, optimistic);
     try {
       await _gateway.setFavorite(session, item.id, next);
-      await _library.cacheLibrary(session.profile.id, optimistic);
+      if (!_isCurrent(session, epoch)) return;
+      await _library.cacheLibrary(session.profile.profileId, optimistic);
+      final updated = optimistic.firstWhere(
+        (entry) => entry.id == item.id,
+        orElse: () => item.copyWith(isFavorite: next),
+      );
+      await _player.updateItemMetadata(updated);
     } catch (error) {
+      if (!_isCurrent(session, epoch)) return;
       state = state.copyWith(
         library: state.library
             .map(
@@ -389,15 +466,24 @@ class AppController extends Notifier<AppState> {
             .toList(growable: false),
         error: _friendlyError(error),
       );
+      await _player.setBrowseLibrary(session, state.library);
+      for (final restored in state.library) {
+        if (restored.id == item.id) {
+          await _player.updateItemMetadata(restored);
+          break;
+        }
+      }
     }
   }
 
   Future<void> download(LibraryItem item, {bool? wifiOnly}) async {
     final session = state.session;
     if (session == null) return;
+    final epoch = _sessionEpoch;
     final prefs = await SharedPreferences.getInstance();
     final requiresWifi =
         wifiOnly ?? prefs.getBool('wifiOnlyDownloads') ?? false;
+    if (!_isCurrent(session, epoch)) return;
     final manager = ref.read(downloadManagerProvider);
     if (item.type == LibraryItemType.track) {
       return manager.enqueue(session, item, wifiOnly: requiresWifi);
@@ -408,22 +494,23 @@ class AppController extends Notifier<AppState> {
       parentId: item.id,
       limit: 5000,
     );
+    if (!_isCurrent(session, epoch)) return;
     for (final track in tracks) {
+      if (!_isCurrent(session, epoch)) return;
       await manager.enqueue(session, track, wifiOnly: requiresWifi);
     }
   }
 
-  Future<void> downloadAll(
-    List<LibraryItem> tracks, {
-    bool? wifiOnly,
-  }) async {
+  Future<void> downloadAll(List<LibraryItem> tracks, {bool? wifiOnly}) async {
     for (final track in tracks) {
       await download(track, wifiOnly: wifiOnly);
     }
   }
 
   Future<void> switchProfile(ServerProfile profile) async {
-    if (state.session?.profile.id == profile.id) return;
+    if (state.session?.profile.profileId == profile.profileId) return;
+    _sessionEpoch++;
+    _searchEpoch++;
     await _player.stop();
     final session = await _profiles.restore(profile);
     if (session == null) {
@@ -434,21 +521,28 @@ class AppController extends Notifier<AppState> {
       );
       return;
     }
-    final cached = await _library.readCachedLibrary(profile.id);
-    state = state.copyWith(
-      session: session,
-      library: cached,
-      clearError: true,
-    );
+    final cached = await _library.readCachedLibrary(profile.profileId);
+    state = state.copyWith(session: session, library: cached, clearError: true);
+    await _player.restore(session, cached);
     await _profiles.save(session);
     await synchronize();
   }
 
-  Future<void> logout({bool forgetServer = false}) async {
+  Future<void> logout({
+    bool forgetServer = false,
+    bool preserveCredential = false,
+  }) async {
     final session = state.session;
+    _sessionEpoch++;
+    _searchEpoch++;
     await _player.stop();
     if (session != null && forgetServer) {
-      await _profiles.remove(session.profile.id);
+      await ref
+          .read(downloadManagerProvider)
+          .purgeProfile(session.profile.profileId);
+      await _profiles.remove(session.profile.profileId);
+    } else if (session != null && !preserveCredential) {
+      await _profiles.signOut(session.profile.profileId);
     }
     final profiles = await _profiles.all();
     state = state.copyWith(
@@ -474,19 +568,19 @@ class AppController extends Notifier<AppState> {
         state = state.copyWith(initializing: false, profiles: profiles);
         return;
       }
-      final cached = await _library.readCachedLibrary(session.profile.id);
+      final cached = await _library.readCachedLibrary(
+        session.profile.profileId,
+      );
       state = state.copyWith(
         initializing: false,
         session: session,
         profiles: profiles,
         library: cached,
       );
+      await _player.restore(session, cached);
       unawaited(synchronize());
     } catch (error) {
-      state = state.copyWith(
-        initializing: false,
-        error: _friendlyError(error),
-      );
+      state = state.copyWith(initializing: false, error: _friendlyError(error));
     }
   }
 
@@ -496,5 +590,10 @@ class AppController extends Notifier<AppState> {
         .replaceFirst('Exception: ', '')
         .replaceFirst('Bad state: ', '')
         .replaceFirst('FormatException: ', '');
+  }
+
+  bool _isCurrent(AuthSession session, int epoch) {
+    return epoch == _sessionEpoch &&
+        state.session?.profile.profileId == session.profile.profileId;
   }
 }

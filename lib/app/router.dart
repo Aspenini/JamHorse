@@ -20,7 +20,11 @@ final routerProvider = Provider<GoRouter>((ref) {
     ),
   );
   return GoRouter(
-    initialLocation: auth.$1 ? '/splash' : auth.$2 ? '/home' : '/login',
+    initialLocation: auth.$1
+        ? '/splash'
+        : auth.$2
+        ? '/home'
+        : '/login',
     redirect: (context, routerState) {
       final location = routerState.matchedLocation;
       if (auth.$1) return location == '/splash' ? null : '/splash';
@@ -33,10 +37,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/splash',
         builder: (context, state) => const SplashScreen(),
       ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       ShellRoute(
         builder: (context, state, child) => AdaptiveShell(child: child),
         routes: [

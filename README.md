@@ -3,7 +3,7 @@
 JamHorse is a dark-first Jellyfin music player for Android, iOS, macOS,
 Windows, and Linux. It is built with Flutter and licensed under GPLv3.
 
-![JamHorse icon](assets/icons/jamhorse-512.png)
+![JamHorse icon](assets/icons-output/web/icon-512.png)
 
 ## Included
 
@@ -16,7 +16,7 @@ Windows, and Linux. It is built with Flutter and licensed under GPLv3.
 - Adaptive mobile, tablet, and desktop layouts
 - Platform capability bridge for Cast, AirPlay, automotive controls, desktop
   media sessions, and equalizer support
-- Pinned Jellyfin 10.11 OpenAPI client isolated behind domain interfaces
+- Focused, typed Jellyfin 10.10+ gateway with bounded pagination
 - Redacted local diagnostics with no analytics or third-party music services
 
 ## Development
@@ -35,9 +35,9 @@ fvm flutter run
 The application identifier is `com.jamhorse.app`. Android supports API 23+,
 iOS supports 14+, and macOS supports 12+.
 
-Plain HTTP is accepted only when the user explicitly enables it for localhost,
-`.local`, link-local, or private IP addresses. Invalid TLS certificates and
-public HTTP endpoints are rejected.
+Plain HTTP is accepted only when the user explicitly enables it for literal
+loopback, link-local, RFC1918, or ULA addresses. Invalid TLS certificates,
+local DNS names, and public HTTP endpoints are rejected.
 
 ## Quality checks
 
