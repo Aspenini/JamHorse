@@ -5,11 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jamhorse/app/theme.dart';
 import 'package:jamhorse/domain/models.dart';
+import 'package:jamhorse/platform/window_decorations.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/widgets/artwork.dart';
-import 'package:jamhorse/ui/widgets/brand.dart';
 import 'package:jamhorse/ui/widgets/interaction.dart';
 import 'package:jamhorse/ui/widgets/mini_player.dart';
+import 'package:jamhorse/ui/widgets/user_avatar.dart';
+import 'package:jamhorse/ui/widgets/window_frame.dart';
+import 'package:window_manager/window_manager.dart';
 
 class AdaptiveShell extends ConsumerWidget {
   const AdaptiveShell({required this.child, super.key});
@@ -27,13 +30,20 @@ class AdaptiveShell extends ConsumerWidget {
     final width = MediaQuery.sizeOf(context).width;
     final desktop = width >= 920;
     final path = GoRouterState.of(context).uri.path;
+    final customDecorations =
+        supportsWindowDecorations &&
+        ref.watch(windowDecorationProvider) == WindowDecorationMode.custom;
     if (desktop) {
-      return _SpotifyDesktopShell(path: path, child: child);
+      return _SpotifyDesktopShell(
+        path: path,
+        customDecorations: customDecorations,
+        child: child,
+      );
     }
     final selected = _mobileDestinations
         .indexWhere((destination) => path.startsWith(destination.path))
         .clamp(0, _mobileDestinations.length - 1);
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: JamColors.ink,
       body: child,
       bottomNavigationBar: Column(
@@ -56,13 +66,27 @@ class AdaptiveShell extends ConsumerWidget {
         ],
       ),
     );
+    if (!customDecorations) return scaffold;
+    // The compact layout has no top bar, so it needs its own caption to keep
+    // the window movable and closable.
+    return Column(
+      children: [
+        const StandaloneWindowCaption(),
+        Expanded(child: scaffold),
+      ],
+    );
   }
 }
 
 class _SpotifyDesktopShell extends StatelessWidget {
-  const _SpotifyDesktopShell({required this.path, required this.child});
+  const _SpotifyDesktopShell({
+    required this.path,
+    required this.customDecorations,
+    required this.child,
+  });
 
   final String path;
+  final bool customDecorations;
   final Widget child;
 
   @override
@@ -79,7 +103,10 @@ class _SpotifyDesktopShell extends StatelessWidget {
       backgroundColor: JamColors.ink,
       body: Column(
         children: [
-          _GlobalTopBar(libraryWidth: libraryWidth),
+          _GlobalTopBar(
+            libraryWidth: libraryWidth,
+            customDecorations: customDecorations,
+          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
@@ -115,9 +142,13 @@ class _SpotifyDesktopShell extends StatelessWidget {
 }
 
 class _GlobalTopBar extends ConsumerStatefulWidget {
-  const _GlobalTopBar({required this.libraryWidth});
+  const _GlobalTopBar({
+    required this.libraryWidth,
+    required this.customDecorations,
+  });
 
   final double libraryWidth;
+  final bool customDecorations;
 
   @override
   ConsumerState<_GlobalTopBar> createState() => _GlobalTopBarState();
@@ -157,116 +188,132 @@ class _GlobalTopBarState extends ConsumerState<_GlobalTopBar> {
     }
     return SizedBox(
       height: 72,
-      child: Row(
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          SizedBox(
-            width: widget.libraryWidth,
-            child: Row(
-              children: [
-                const SizedBox(width: 18),
-                const Icon(Icons.more_horiz_rounded, color: JamColors.muted),
-                const SizedBox(width: 24),
-                IconButton(
-                  tooltip: 'Back',
-                  onPressed: context.canPop() ? context.pop : null,
-                  icon: const Icon(Icons.chevron_left_rounded, size: 34),
+          // Any spot on the bar not covered by an interactive control moves
+          // the window, like a native title bar.
+          if (widget.customDecorations)
+            const DragToMoveArea(child: SizedBox.expand()),
+          Row(
+            children: [
+              SizedBox(
+                width: widget.libraryWidth,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 18),
+                    const Icon(
+                      Icons.more_horiz_rounded,
+                      color: JamColors.muted,
+                    ),
+                    const SizedBox(width: 24),
+                    IconButton(
+                      tooltip: 'Back',
+                      onPressed: context.canPop() ? context.pop : null,
+                      icon: const Icon(Icons.chevron_left_rounded, size: 34),
+                    ),
+                    IconButton(
+                      tooltip: 'Forward',
+                      onPressed: null,
+                      icon: const Icon(Icons.chevron_right_rounded, size: 34),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  tooltip: 'Forward',
-                  onPressed: null,
-                  icon: const Icon(Icons.chevron_right_rounded, size: 34),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _CircleButton(
-                  tooltip: 'Home',
-                  icon: Icons.home_filled,
-                  onPressed: () => context.go('/home'),
-                ),
-                const SizedBox(width: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 710),
-                  child: SearchBar(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    hintText: 'What do you want to play?',
-                    leading: const Icon(Icons.search_rounded, size: 30),
-                    trailing: [
-                      if (query.isNotEmpty)
-                        IconButton(
-                          tooltip: 'Clear search',
-                          onPressed: () {
-                            _controller.clear();
-                            _search('');
-                          },
-                          icon: const Icon(Icons.close_rounded),
-                        )
-                      else ...[
-                        const SizedBox(
-                          height: 30,
-                          child: VerticalDivider(color: JamColors.subtle),
+              ),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _CircleButton(
+                      tooltip: 'Home',
+                      icon: Icons.home_filled,
+                      onPressed: () => context.go('/home'),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 710),
+                        child: SearchBar(
+                          controller: _controller,
+                          focusNode: _focusNode,
+                          hintText: 'What do you want to play?',
+                          leading: const Icon(Icons.search_rounded, size: 30),
+                          trailing: [
+                            if (query.isNotEmpty)
+                              IconButton(
+                                tooltip: 'Clear search',
+                                onPressed: () {
+                                  _controller.clear();
+                                  _search('');
+                                },
+                                icon: const Icon(Icons.close_rounded),
+                              )
+                            else ...[
+                              const SizedBox(
+                                height: 30,
+                                child: VerticalDivider(color: JamColors.subtle),
+                              ),
+                              const Icon(Icons.inventory_2_outlined, size: 25),
+                            ],
+                          ],
+                          onChanged: _search,
+                          onSubmitted: _search,
                         ),
-                        const Icon(Icons.inventory_2_outlined, size: 25),
-                      ],
-                    ],
-                    onChanged: _search,
-                    onSubmitted: _search,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: widget.libraryWidth,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                IconButton(
-                  tooltip: 'Notifications',
-                  onPressed: () {},
-                  icon: const Icon(Icons.notifications_none_rounded),
-                ),
-                IconButton(
-                  tooltip: 'Friend activity',
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Friend activity is not available on Jellyfin.',
                       ),
                     ),
-                  ),
-                  icon: const Icon(Icons.group_outlined),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                HoverScale(
-                  hoverScale: 1.08,
-                  child: Tooltip(
-                    message: 'Profile and settings',
-                    child: Material(
-                      color: JamColors.soft,
-                      shape: const CircleBorder(),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () => context.go('/settings'),
-                        child: const SizedBox.square(
-                          dimension: 44,
-                          child: Padding(
-                            padding: EdgeInsets.all(6),
-                            child: ClipOval(child: JamHorseBrand(height: 32)),
+              ),
+              SizedBox(
+                width: widget.libraryWidth,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      tooltip: 'Notifications',
+                      onPressed: () {},
+                      icon: const Icon(Icons.notifications_none_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Friend activity',
+                      onPressed: () =>
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Friend activity is not available on Jellyfin.',
+                              ),
+                            ),
+                          ),
+                      icon: const Icon(Icons.group_outlined),
+                    ),
+                    const SizedBox(width: 8),
+                    HoverScale(
+                      hoverScale: 1.08,
+                      child: Tooltip(
+                        message: 'Profile and settings',
+                        child: Material(
+                          color: JamColors.soft,
+                          shape: const CircleBorder(),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () => context.go('/settings'),
+                            child: const SizedBox.square(
+                              dimension: 44,
+                              child: Padding(
+                                padding: EdgeInsets.all(6),
+                                child: UserAvatar(size: 32),
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
+                    SizedBox(width: widget.customDecorations ? 8 : 18),
+                    if (widget.customDecorations) const WindowControls(),
+                  ],
                 ),
-                const SizedBox(width: 18),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -310,15 +357,17 @@ class _LibraryPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
-    final likedCount = state.library
+    final library = ref.watch(
+      appControllerProvider.select((state) => state.library),
+    );
+    final likedCount = library
         .where((item) => item.type == LibraryItemType.track && item.isFavorite)
         .length;
-    final likedTracks = state.library
+    final likedTracks = library
         .where((item) => item.type == LibraryItemType.track && item.isFavorite)
         .toList(growable: false);
     final downloadedIds = ref.watch(downloadedItemIdsProvider);
-    final downloadedTracks = state.library
+    final downloadedTracks = library
         .where(
           (item) =>
               item.type == LibraryItemType.track &&
@@ -326,7 +375,7 @@ class _LibraryPanel extends ConsumerWidget {
         )
         .toList(growable: false);
     final controller = ref.read(appControllerProvider.notifier);
-    final libraryItems = state.library
+    final libraryItems = library
         .where(
           (item) =>
               item.type == LibraryItemType.playlist ||
@@ -717,8 +766,7 @@ class _NowPlayingPanel extends ConsumerWidget {
       );
     }
     final related = ref
-        .watch(appControllerProvider)
-        .library
+        .watch(appControllerProvider.select((state) => state.library))
         .where(
           (candidate) =>
               candidate.id != item.id &&

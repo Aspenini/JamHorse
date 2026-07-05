@@ -116,6 +116,7 @@ void main() {
     expect((await gateway.fetchLyrics(_session, 'track')).single.text, 'line');
     await gateway.setFavorite(_session, 'track', true);
     expect(gateway.imageUri(_session, 'track').path, '/image/track');
+    expect(gateway.userImageUri(_session).path, '/user-image/user');
     expect(gateway.streamUri(_session, _item).path, '/stream/track');
     expect(gateway.playbackHeaders(_session), {'Authorization': 'secret'});
     expect(inner.favorite, isTrue);
@@ -255,6 +256,11 @@ class _ForwardingGateway extends _RecordingGateway {
   @override
   Uri imageUri(AuthSession session, String itemId, {int width = 600}) =>
       Uri.parse('https://music.example.com/image/$itemId');
+
+  @override
+  Uri userImageUri(AuthSession session, {int width = 128}) => Uri.parse(
+    'https://music.example.com/user-image/${session.profile.userId}',
+  );
 
   @override
   Uri streamUri(AuthSession session, LibraryItem item, {int? maxBitrate}) =>

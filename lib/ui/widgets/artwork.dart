@@ -20,7 +20,9 @@ class Artwork extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(appControllerProvider).session;
+    final session = ref.watch(
+      appControllerProvider.select((state) => state.session),
+    );
     final authenticated =
         session != null &&
         session.profile.profileId == item.profileId &&

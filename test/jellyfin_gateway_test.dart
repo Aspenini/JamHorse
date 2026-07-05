@@ -110,10 +110,14 @@ void main() {
     );
 
     final uri = gateway.streamUri(session, item);
+    final userImage = gateway.userImageUri(session);
 
     expect(uri.queryParameters, isNot(contains('api_key')));
     expect(uri.queryParameters.values, isNot(contains('secret')));
     expect(uri.userInfo, isEmpty);
+    expect(userImage.path, '/Users/user/Images/Primary');
+    expect(userImage.queryParameters, isNot(contains('api_key')));
+    expect(userImage.userInfo, isEmpty);
     expect(
       gateway.playbackHeaders(session)['Authorization'],
       contains('secret'),

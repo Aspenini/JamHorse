@@ -5,6 +5,7 @@ import 'package:jamhorse/domain/models.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/widgets/interaction.dart';
 import 'package:jamhorse/ui/widgets/track_table.dart';
+import 'package:jamhorse/ui/widgets/user_avatar.dart';
 
 class LikedSongsScreen extends ConsumerWidget {
   const LikedSongsScreen({super.key});
@@ -104,14 +105,9 @@ class LikedSongsScreen extends ConsumerWidget {
                             const SizedBox(height: 18),
                             Row(
                               children: [
-                                const CircleAvatar(
-                                  radius: 12,
-                                  backgroundColor: JamColors.soft,
-                                  child: Icon(
-                                    Icons.person,
-                                    size: 14,
-                                    color: Colors.white,
-                                  ),
+                                const SizedBox.square(
+                                  dimension: 24,
+                                  child: UserAvatar(size: 24),
                                 ),
                                 const SizedBox(width: 8),
                                 Flexible(

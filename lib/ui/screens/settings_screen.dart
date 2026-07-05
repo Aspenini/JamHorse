@@ -8,6 +8,7 @@ import 'package:jamhorse/app/theme.dart';
 import 'package:jamhorse/core/artwork_cache.dart';
 import 'package:jamhorse/core/logging.dart';
 import 'package:jamhorse/domain/models.dart';
+import 'package:jamhorse/platform/window_decorations.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/widgets/brand.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -122,6 +123,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final bridge = ref.watch(platformMediaBridgeProvider);
     final capabilities =
         ref.watch(platformCapabilitiesProvider).value ?? bridge.capabilities;
+    final windowDecoration = ref.watch(windowDecorationProvider);
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -176,6 +178,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ],
               ),
+              if (supportsWindowDecorations)
+                _Section(
+                  title: 'Appearance',
+                  children: [
+                    SwitchListTile.adaptive(
+                      secondary: const Icon(Icons.web_asset_rounded),
+                      title: const Text('Custom window controls'),
+                      subtitle: Text(
+                        windowDecoration == WindowDecorationMode.custom
+                            ? 'Spotify-style title bar'
+                            : 'System-native title bar',
+                      ),
+                      value: windowDecoration == WindowDecorationMode.custom,
+                      onChanged: (enabled) => ref
+                          .read(windowDecorationProvider.notifier)
+                          .setMode(
+                            enabled
+                                ? WindowDecorationMode.custom
+                                : WindowDecorationMode.native,
+                          ),
+                    ),
+                  ],
+                ),
               _Section(
                 title: 'Playback',
                 children: [

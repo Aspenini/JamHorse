@@ -13,6 +13,7 @@ import 'package:jamhorse/data/jellyfin_gateway.dart';
 import 'package:jamhorse/data/pre_release_reset.dart';
 import 'package:jamhorse/data/report_buffer.dart';
 import 'package:jamhorse/domain/models.dart';
+import 'package:jamhorse/platform/window_decorations.dart';
 import 'package:jamhorse/playback/jamhorse_audio_handler.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
@@ -23,6 +24,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureLogging();
   await PreReleaseReset.runIfNeeded();
+  final windowDecorationMode = await loadWindowDecorationMode();
+  seedWindowDecorationMode(windowDecorationMode);
 
   if (Platform.isWindows || Platform.isLinux) {
     JustAudioMediaKit.ensureInitialized(
@@ -33,12 +36,18 @@ Future<void> main() async {
 
   if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
     await windowManager.ensureInitialized();
-    const options = WindowOptions(
-      size: Size(1240, 800),
-      minimumSize: Size(720, 620),
+    final customDecorations =
+        windowDecorationMode == WindowDecorationMode.custom;
+    final options = WindowOptions(
+      size: const Size(1240, 800),
+      minimumSize: const Size(720, 620),
       center: true,
-      backgroundColor: Color(0xFF070A14),
+      backgroundColor: const Color(0xFF000000),
       title: 'JamHorse',
+      titleBarStyle: customDecorations
+          ? TitleBarStyle.hidden
+          : TitleBarStyle.normal,
+      windowButtonVisibility: !customDecorations,
     );
     await windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.show();

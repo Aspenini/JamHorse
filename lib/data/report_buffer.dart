@@ -256,6 +256,10 @@ class ReportBufferingGateway implements JellyfinGateway {
       _inner.imageUri(session, itemId, width: width);
 
   @override
+  Uri userImageUri(AuthSession session, {int width = 128}) =>
+      _inner.userImageUri(session, width: width);
+
+  @override
   Uri streamUri(AuthSession session, LibraryItem item, {int? maxBitrate}) =>
       _inner.streamUri(session, item, maxBitrate: maxBitrate);
 

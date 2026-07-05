@@ -33,6 +33,8 @@ abstract interface class JellyfinGateway {
 
   Uri imageUri(AuthSession session, String itemId, {int width = 600});
 
+  Uri userImageUri(AuthSession session, {int width = 128});
+
   Uri streamUri(AuthSession session, LibraryItem item, {int? maxBitrate});
 
   Map<String, String> playbackHeaders(AuthSession session);

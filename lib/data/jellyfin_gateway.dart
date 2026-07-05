@@ -243,6 +243,13 @@ class DioJellyfinGateway implements JellyfinGateway {
   }
 
   @override
+  Uri userImageUri(AuthSession session, {int width = 128}) {
+    return Uri.parse(
+      _sessionUrl(session, '/Users/${session.profile.userId}/Images/Primary'),
+    ).replace(queryParameters: {'maxWidth': '$width', 'quality': '90'});
+  }
+
+  @override
   Map<String, String> playbackHeaders(AuthSession session) {
     return _sessionHeaders(session);
   }
