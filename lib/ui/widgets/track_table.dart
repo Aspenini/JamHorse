@@ -45,6 +45,95 @@ class TrackTableHeader extends StatelessWidget {
   }
 }
 
+/// Spotify's phone-width track row: artwork, title, artist line with the
+/// offline badge — no index, album, or duration columns.
+class MobileTrackTile extends StatelessWidget {
+  const MobileTrackTile({
+    required this.track,
+    required this.onTap,
+    super.key,
+    this.downloaded = false,
+    this.trailing,
+  });
+
+  final LibraryItem track;
+
+  /// Shows the offline badge: this track plays from its local file.
+  final bool downloaded;
+  final VoidCallback onTap;
+
+  /// Optional control on the right edge (e.g. an un-like heart).
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        child: Row(
+          children: [
+            SizedBox.square(
+              dimension: 48,
+              child: Artwork(item: track, borderRadius: 4, iconSize: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    track.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFF0F0F0),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      if (downloaded)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Icon(
+                            Icons.download_for_offline_rounded,
+                            size: 15,
+                            color: JamColors.accentBright,
+                          ),
+                        ),
+                      Flexible(
+                        child: Text(
+                          track.subtitle ?? 'Unknown artist',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: JamColors.muted,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            trailing ??
+                const Icon(
+                  Icons.more_horiz_rounded,
+                  color: JamColors.muted,
+                  size: 22,
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class TrackRow extends StatefulWidget {
   const TrackRow({
     required this.index,

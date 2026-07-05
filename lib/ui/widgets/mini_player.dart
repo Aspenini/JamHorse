@@ -356,67 +356,72 @@ class MiniPlayer extends ConsumerWidget {
                 ? 0.0
                 : (snapshot.position.inMilliseconds / duration).clamp(0, 1))
             .toDouble();
+    // Spotify's phone mini player: a floating rounded card with a hairline
+    // progress bar tucked inside its bottom edge.
     return Semantics(
       button: true,
       label: 'Now playing ${item.name}',
-      child: Material(
-        color: const Color(0xF5121724),
-        child: InkWell(
-          mouseCursor: SystemMouseCursors.click,
-          onTap: () => context.push('/now-playing'),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              LinearProgressIndicator(
-                value: progress,
-                minHeight: 2,
-                color: JamColors.accent,
-                backgroundColor: Colors.white12,
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    SizedBox.square(
-                      dimension: 48,
-                      child: Artwork(item: item, borderRadius: 9, iconSize: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            item.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          Text(
-                            item.subtitle ?? 'Unknown artist',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: JamColors.muted),
-                          ),
-                        ],
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+        child: Material(
+          color: const Color(0xFF35333F),
+          borderRadius: BorderRadius.circular(8),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            mouseCursor: SystemMouseCursors.click,
+            onTap: () => context.push('/now-playing'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 4, 6),
+                  child: Row(
+                    children: [
+                      SizedBox.square(
+                        dimension: 42,
+                        child: Artwork(
+                          item: item,
+                          borderRadius: 6,
+                          iconSize: 20,
+                        ),
                       ),
-                    ),
-                    HoverScale(
-                      hoverScale: 1.08,
-                      child: IconButton.filled(
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              item.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              item.subtitle ?? 'Unknown artist',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: JamColors.muted,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
                         tooltip: snapshot.playing ? 'Pause' : 'Play',
                         onPressed: snapshot.playing
                             ? (casting ? bridge.remotePause : coordinator.pause)
                             : (casting ? bridge.remotePlay : coordinator.play),
                         style: IconButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: JamColors.ink,
+                          foregroundColor: Colors.white,
                         ),
+                        iconSize: 30,
                         icon: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 160),
                           child: Icon(
@@ -427,18 +432,34 @@ class MiniPlayer extends ConsumerWidget {
                           ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: 'Next',
-                      onPressed: casting
-                          ? bridge.remoteNext
-                          : coordinator.skipNext,
-                      icon: const Icon(Icons.skip_next_rounded),
-                    ),
-                  ],
+                      IconButton(
+                        tooltip: 'Next',
+                        onPressed: casting
+                            ? bridge.remoteNext
+                            : coordinator.skipNext,
+                        style: IconButton.styleFrom(
+                          foregroundColor: Colors.white,
+                        ),
+                        iconSize: 28,
+                        icon: const Icon(Icons.skip_next_rounded),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 7),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 2,
+                      color: Colors.white,
+                      backgroundColor: Colors.white24,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

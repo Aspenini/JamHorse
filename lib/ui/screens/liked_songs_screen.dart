@@ -30,146 +30,219 @@ class LikedSongsScreen extends ConsumerWidget {
       ),
     );
     final total = liked.fold(Duration.zero, (sum, item) => sum + item.duration);
-    final desktop = MediaQuery.sizeOf(context).width >= 700;
+    // Matches the shell's desktop/mobile breakpoint so the screen never
+    // shows desktop chrome inside the phone shell.
+    final desktop = MediaQuery.sizeOf(context).width >= 920;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            pinned: true,
-            toolbarHeight: 0,
-            expandedHeight: desktop ? 350 : 260,
-            backgroundColor: const Color(0xFF291E4B),
-            flexibleSpace: FlexibleSpaceBar(
-              background: DecoratedBox(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFF5B3BB2),
-                      Color(0xFF38286E),
-                      Color(0xFF291E4B),
-                    ],
+          if (!desktop)
+            SliverAppBar(
+              pinned: true,
+              expandedHeight: 200,
+              backgroundColor: const Color(0xFF38286E),
+              foregroundColor: Colors.white,
+              flexibleSpace: FlexibleSpaceBar(
+                collapseMode: CollapseMode.pin,
+                background: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF5B3BB2),
+                        Color(0xFF38286E),
+                        Color(0xFF291E4B),
+                      ],
+                    ),
                   ),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    desktop ? 28 : 20,
-                    desktop ? 70 : 36,
-                    desktop ? 28 : 20,
-                    28,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Container(
-                        width: desktop ? 220 : 150,
-                        height: desktop ? 220 : 150,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(5),
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFF450AF5), Color(0xFFC4EFD9)],
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black45,
-                              blurRadius: 28,
-                              offset: Offset(0, 12),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.favorite_rounded,
-                          size: 82,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(width: 28),
-                      Expanded(
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: Align(
+                        alignment: Alignment.bottomLeft,
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Playlist',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 8),
                             Text(
                               'Liked Songs',
-                              style: Theme.of(context).textTheme.displayLarge,
+                              style: Theme.of(context).textTheme.headlineLarge,
                             ),
-                            const SizedBox(height: 18),
-                            Row(
-                              children: [
-                                const SizedBox.square(
-                                  dimension: 24,
-                                  child: UserAvatar(size: 24),
-                                ),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    '$username · ${liked.length} songs, '
-                                    '${total.inHours} hr '
-                                    '${total.inMinutes.remainder(60)} min',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Color(0xFFE0E0E0),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(height: 6),
+                            Text(
+                              '${liked.length} songs',
+                              style: const TextStyle(
+                                color: Color(0xFFD5CCF1),
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                    ],
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverAppBar(
+              pinned: true,
+              toolbarHeight: 0,
+              expandedHeight: 350,
+              backgroundColor: const Color(0xFF291E4B),
+              flexibleSpace: FlexibleSpaceBar(
+                background: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF5B3BB2),
+                        Color(0xFF38286E),
+                        Color(0xFF291E4B),
+                      ],
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 70, 28, 28),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          width: 220,
+                          height: 220,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(5),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF450AF5), Color(0xFFC4EFD9)],
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black45,
+                                blurRadius: 28,
+                                offset: Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.favorite_rounded,
+                            size: 82,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 28),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Playlist',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Liked Songs',
+                                style: Theme.of(context).textTheme.displayLarge,
+                              ),
+                              const SizedBox(height: 18),
+                              Row(
+                                children: [
+                                  const SizedBox.square(
+                                    dimension: 24,
+                                    child: UserAvatar(size: 24),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      '$username · ${liked.length} songs, '
+                                      '${total.inHours} hr '
+                                      '${total.inMinutes.remainder(60)} min',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Color(0xFFE0E0E0),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(28, 26, 28, 12),
+            padding: desktop
+                ? const EdgeInsets.fromLTRB(28, 26, 28, 12)
+                : const EdgeInsets.fromLTRB(16, 12, 16, 4),
             sliver: SliverToBoxAdapter(
               child: Row(
                 children: [
-                  HoverScale(
-                    enabled: liked.isNotEmpty,
-                    hoverScale: 1.075,
-                    child: IconButton.filled(
-                      tooltip: 'Play',
-                      onPressed: liked.isEmpty
-                          ? null
-                          : () => controller.playQueue(liked),
-                      style: IconButton.styleFrom(
-                        backgroundColor: JamColors.accent,
-                        foregroundColor: Colors.black,
-                        minimumSize: const Size.square(64),
+                  if (!desktop) ...[
+                    // Spotify's phone layout: a small playlist tile and
+                    // download on the left, shuffle and play on the right.
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF450AF5), Color(0xFFC4EFD9)],
+                        ),
                       ),
-                      icon: const Icon(Icons.play_arrow_rounded, size: 38),
-                    ),
-                  ),
-                  const SizedBox(width: 18),
-                  HoverScale(
-                    enabled: liked.isNotEmpty,
-                    child: IconButton(
-                      tooltip: 'Shuffle',
-                      onPressed: liked.isEmpty
-                          ? null
-                          : () => controller.playQueue(liked, shuffle: true),
-                      icon: const Icon(
-                        Icons.shuffle_rounded,
-                        color: JamColors.accent,
-                        size: 34,
+                      child: const Icon(
+                        Icons.favorite_rounded,
+                        size: 24,
+                        color: Colors.white,
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                  ],
+                  if (desktop) ...[
+                    HoverScale(
+                      enabled: liked.isNotEmpty,
+                      hoverScale: 1.075,
+                      child: IconButton.filled(
+                        tooltip: 'Play',
+                        onPressed: liked.isEmpty
+                            ? null
+                            : () => controller.playQueue(liked),
+                        style: IconButton.styleFrom(
+                          backgroundColor: JamColors.accent,
+                          foregroundColor: Colors.black,
+                          minimumSize: const Size.square(64),
+                        ),
+                        icon: const Icon(Icons.play_arrow_rounded, size: 38),
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    HoverScale(
+                      enabled: liked.isNotEmpty,
+                      child: IconButton(
+                        tooltip: 'Shuffle',
+                        onPressed: liked.isEmpty
+                            ? null
+                            : () => controller.playQueue(liked, shuffle: true),
+                        icon: const Icon(
+                          Icons.shuffle_rounded,
+                          color: JamColors.accent,
+                          size: 34,
+                        ),
+                      ),
+                    ),
+                  ],
                   IconButton(
                     tooltip: 'Download all',
                     onPressed: liked.isEmpty
@@ -184,23 +257,50 @@ class LikedSongsScreen extends ConsumerWidget {
                               ),
                             );
                           },
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.download_for_offline_outlined,
-                      size: 32,
+                      size: desktop ? 32 : 28,
                     ),
                   ),
                   const Spacer(),
-                  const Icon(Icons.search_rounded, color: JamColors.muted),
-                  const SizedBox(width: 22),
-                  const Text(
-                    'Recently added',
-                    style: TextStyle(
-                      color: JamColors.muted,
-                      fontWeight: FontWeight.w600,
+                  if (desktop) ...[
+                    const Icon(Icons.search_rounded, color: JamColors.muted),
+                    const SizedBox(width: 22),
+                    const Text(
+                      'Recently added',
+                      style: TextStyle(
+                        color: JamColors.muted,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.list_rounded, color: JamColors.muted),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.list_rounded, color: JamColors.muted),
+                  ] else ...[
+                    IconButton(
+                      tooltip: 'Shuffle',
+                      onPressed: liked.isEmpty
+                          ? null
+                          : () => controller.playQueue(liked, shuffle: true),
+                      icon: const Icon(
+                        Icons.shuffle_rounded,
+                        color: JamColors.accent,
+                        size: 30,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton.filled(
+                      tooltip: 'Play',
+                      onPressed: liked.isEmpty
+                          ? null
+                          : () => controller.playQueue(liked),
+                      style: IconButton.styleFrom(
+                        backgroundColor: JamColors.accent,
+                        foregroundColor: Colors.black,
+                        minimumSize: const Size.square(56),
+                      ),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 32),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -218,6 +318,31 @@ class LikedSongsScreen extends ConsumerWidget {
                     style: TextStyle(color: JamColors.muted),
                   ),
                 ),
+              ),
+            )
+          else if (!desktop)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(0, 6, 0, 40),
+              sliver: SliverList.builder(
+                itemCount: liked.length,
+                itemBuilder: (context, index) {
+                  final item = liked[index];
+                  return MobileTrackTile(
+                    track: item,
+                    downloaded: downloadedIds.contains(item.id),
+                    onTap: () => controller.playQueue(liked, startWith: item),
+                    trailing: IconButton(
+                      tooltip: 'Remove from Liked Songs',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => controller.toggleFavorite(item),
+                      icon: const Icon(
+                        Icons.favorite_rounded,
+                        color: JamColors.accentBright,
+                        size: 20,
+                      ),
+                    ),
+                  );
+                },
               ),
             )
           else ...[

@@ -179,12 +179,29 @@ ThemeData buildJamHorseTheme() {
         enabledMouseCursor: SystemMouseCursors.click,
       ),
     ),
-    navigationBarTheme: const NavigationBarThemeData(
-      backgroundColor: Color(0xF5000000),
-      indicatorColor: Color(0x331ED760),
-      height: 68,
-      labelTextStyle: WidgetStatePropertyAll(
-        TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+    // Spotify's phone tab bar: plain glyphs that light up white when
+    // selected, no indicator pill.
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: const Color(0xF5000000),
+      indicatorColor: Colors.transparent,
+      height: 64,
+      overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: states.contains(WidgetState.selected)
+              ? Colors.white
+              : JamColors.muted,
+        ),
+      ),
+      iconTheme: WidgetStateProperty.resolveWith(
+        (states) => IconThemeData(
+          size: 26,
+          color: states.contains(WidgetState.selected)
+              ? Colors.white
+              : JamColors.muted,
+        ),
       ),
     ),
     sliderTheme: const SliderThemeData(
@@ -228,9 +245,13 @@ class SpotifyPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
+    // Material instead of ColoredBox so descendant ListTiles and InkWells
+    // paint their ink on the panel rather than warning in debug builds.
+    return Material(
+      color: color ?? JamColors.elevated,
       borderRadius: BorderRadius.circular(8),
-      child: ColoredBox(color: color ?? JamColors.elevated, child: child),
+      clipBehavior: Clip.antiAlias,
+      child: child,
     );
   }
 }

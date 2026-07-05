@@ -63,6 +63,51 @@ class ItemDetailScreen extends ConsumerWidget {
     final showAlbumColumn = item.type != LibraryItemType.album;
     final albumNames = ref.watch(albumNamesProvider);
     final downloadedIds = ref.watch(downloadedItemIdsProvider);
+    // Matches the shell's desktop/mobile breakpoint so the screen never
+    // shows desktop chrome inside the phone shell.
+    final compact = MediaQuery.sizeOf(context).width < 920;
+    final playButton = IconButton.filled(
+      tooltip: 'Play',
+      iconSize: 32,
+      style: IconButton.styleFrom(
+        minimumSize: Size.square(compact ? 56 : 58),
+        backgroundColor: JamColors.accent,
+        foregroundColor: Colors.black,
+      ),
+      onPressed: () => trackChildren.isEmpty
+          ? ref.read(appControllerProvider.notifier).play(item)
+          : ref.read(appControllerProvider.notifier).playQueue(trackChildren),
+      icon: const Icon(Icons.play_arrow_rounded),
+    );
+    final favoriteButton = IconButton(
+      tooltip: item.isFavorite ? 'Remove from favorites' : 'Add to favorites',
+      onPressed: () =>
+          ref.read(appControllerProvider.notifier).toggleFavorite(item),
+      icon: Icon(
+        item.isFavorite
+            ? Icons.favorite_rounded
+            : Icons.favorite_border_rounded,
+        color: item.isFavorite ? JamColors.accent : null,
+      ),
+    );
+    final downloadButton = IconButton(
+      tooltip: 'Download',
+      onPressed: () => ref.read(appControllerProvider.notifier).download(item),
+      icon: const Icon(Icons.download_rounded),
+    );
+    final shuffleButton = IconButton(
+      tooltip: 'Shuffle',
+      onPressed: trackChildren.isEmpty
+          ? null
+          : () => ref
+                .read(appControllerProvider.notifier)
+                .playQueue(trackChildren, shuffle: true),
+      icon: const Icon(
+        Icons.shuffle_rounded,
+        color: JamColors.accent,
+        size: 28,
+      ),
+    );
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -181,57 +226,42 @@ class ItemDetailScreen extends ConsumerWidget {
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 22, 24, 12),
+            padding: compact
+                ? const EdgeInsets.fromLTRB(16, 10, 16, 4)
+                : const EdgeInsets.fromLTRB(24, 22, 24, 12),
             sliver: SliverToBoxAdapter(
-              child: Row(
-                children: [
-                  HoverScale(
-                    hoverScale: 1.075,
-                    child: IconButton.filled(
-                      tooltip: 'Play',
-                      iconSize: 32,
-                      style: IconButton.styleFrom(
-                        minimumSize: const Size.square(58),
-                        backgroundColor: JamColors.accent,
-                        foregroundColor: Colors.black,
-                      ),
-                      onPressed: () => trackChildren.isEmpty
-                          ? ref.read(appControllerProvider.notifier).play(item)
-                          : ref
-                                .read(appControllerProvider.notifier)
-                                .playQueue(trackChildren),
-                      icon: const Icon(Icons.play_arrow_rounded),
+              child: compact
+                  // Spotify's phone layout: utility icons on the left,
+                  // shuffle and play on the right.
+                  ? Row(
+                      children: [
+                        favoriteButton,
+                        downloadButton,
+                        const IconButton(
+                          tooltip: 'More options',
+                          onPressed: null,
+                          icon: Icon(Icons.more_horiz_rounded),
+                        ),
+                        const Spacer(),
+                        shuffleButton,
+                        const SizedBox(width: 4),
+                        playButton,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        HoverScale(hoverScale: 1.075, child: playButton),
+                        const SizedBox(width: 16),
+                        favoriteButton,
+                        downloadButton,
+                        const SizedBox(width: 5),
+                        const IconButton(
+                          tooltip: 'More options',
+                          onPressed: null,
+                          icon: Icon(Icons.more_horiz_rounded),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  IconButton(
-                    tooltip: item.isFavorite
-                        ? 'Remove from favorites'
-                        : 'Add to favorites',
-                    onPressed: () => ref
-                        .read(appControllerProvider.notifier)
-                        .toggleFavorite(item),
-                    icon: Icon(
-                      item.isFavorite
-                          ? Icons.favorite_rounded
-                          : Icons.favorite_border_rounded,
-                      color: item.isFavorite ? JamColors.accent : null,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Download',
-                    onPressed: () =>
-                        ref.read(appControllerProvider.notifier).download(item),
-                    icon: const Icon(Icons.download_rounded),
-                  ),
-                  const SizedBox(width: 5),
-                  const IconButton(
-                    tooltip: 'More options',
-                    onPressed: null,
-                    icon: Icon(Icons.more_horiz_rounded),
-                  ),
-                ],
-              ),
             ),
           ),
           if (loadingChildren)
@@ -243,6 +273,23 @@ class ItemDetailScreen extends ConsumerWidget {
             const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(child: Text('Nothing inside this item yet.')),
+            )
+          else if (trackChildren.length == children.length && compact)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(0, 6, 0, 130),
+              sliver: SliverList.builder(
+                itemCount: trackChildren.length,
+                itemBuilder: (context, index) {
+                  final child = trackChildren[index];
+                  return MobileTrackTile(
+                    track: child,
+                    downloaded: downloadedIds.contains(child.id),
+                    onTap: () => ref
+                        .read(appControllerProvider.notifier)
+                        .playQueue(trackChildren, startWith: child),
+                  );
+                },
+              ),
             )
           else if (trackChildren.length == children.length) ...[
             // A pure track list (album, playlist, genre) gets the
