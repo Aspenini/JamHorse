@@ -55,7 +55,7 @@ flutter:
 msix_config:
   display_name: JamHorse
   publisher_display_name: JamHorse contributors
-  identity_name: com.jamhorse.app
+  identity_name: com.aspenini.jamhorse
   publisher: CN=JamHorse
   logo_path: assets/icons-output/web/icon-512.png
   capabilities: internetClient

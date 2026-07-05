@@ -11,7 +11,7 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     let mediaChannel = FlutterMethodChannel(
-      name: "com.jamhorse.app/media",
+      name: "com.aspenini.jamhorse/media",
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
     mediaChannel.setMethodCallHandler { [weak self] call, result in

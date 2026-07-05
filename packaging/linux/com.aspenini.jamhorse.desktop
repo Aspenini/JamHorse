@@ -2,7 +2,7 @@
 Name=JamHorse
 Comment=Jellyfin music player
 Exec=jamhorse
-Icon=com.jamhorse.app
+Icon=com.aspenini.jamhorse
 Terminal=false
 Type=Application
 Categories=Audio;Music;Player;

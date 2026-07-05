@@ -15,7 +15,7 @@ import AVKit
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
 
     let mediaChannel = FlutterMethodChannel(
-      name: "com.jamhorse.app/media",
+      name: "com.aspenini.jamhorse/media",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     mediaChannel.setMethodCallHandler { call, result in

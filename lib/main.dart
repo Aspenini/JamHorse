@@ -111,7 +111,7 @@ Future<void> main() async {
         database: database,
       ),
       config: const AudioServiceConfig(
-        androidNotificationChannelId: 'com.jamhorse.app.playback',
+        androidNotificationChannelId: 'com.aspenini.jamhorse.playback',
         androidNotificationChannelName: 'Music playback',
         androidNotificationChannelDescription:
             'Playback controls for your Jellyfin music',

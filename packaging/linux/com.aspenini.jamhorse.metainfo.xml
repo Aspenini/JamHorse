@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.jamhorse.app</id>
+  <id>com.aspenini.jamhorse</id>
   <name>JamHorse</name>
   <summary>Listen to music from a Jellyfin server</summary>
   <metadata_license>CC0-1.0</metadata_license>
@@ -11,7 +11,7 @@
       libraries, with offline downloads and native media controls.
     </p>
   </description>
-  <launchable type="desktop-id">com.jamhorse.app.desktop</launchable>
+  <launchable type="desktop-id">com.aspenini.jamhorse.desktop</launchable>
   <provides>
     <binary>jamhorse</binary>
   </provides>

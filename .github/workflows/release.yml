@@ -122,7 +122,7 @@ jobs:
             <key>signingStyle</key><string>manual</string>
             <key>teamID</key><string>$APPLE_TEAM_ID</string>
             <key>provisioningProfiles</key><dict>
-              <key>com.jamhorse.app</key><string>$IOS_PROFILE_NAME</string>
+              <key>com.aspenini.jamhorse</key><string>$IOS_PROFILE_NAME</string>
             </dict>
           </dict></plist>
           EOF

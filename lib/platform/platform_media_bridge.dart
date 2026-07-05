@@ -9,7 +9,7 @@ import 'package:jamhorse/domain/models.dart';
 class NativePlatformMediaBridge implements PlatformMediaBridge {
   NativePlatformMediaBridge();
 
-  static const _channel = MethodChannel('com.jamhorse.app/media');
+  static const _channel = MethodChannel('com.aspenini.jamhorse/media');
   static const _castAppId = String.fromEnvironment('CAST_RECEIVER_APP_ID');
 
   final _capabilityController =

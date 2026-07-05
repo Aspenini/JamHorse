@@ -1,4 +1,4 @@
-package com.jamhorse.app
+package com.aspenini.jamhorse
 
 import android.content.Intent
 import android.media.audiofx.AudioEffect
@@ -7,7 +7,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : AudioServiceActivity() {
-    private val channelName = "com.jamhorse.app/media"
+    private val channelName = "com.aspenini.jamhorse/media"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

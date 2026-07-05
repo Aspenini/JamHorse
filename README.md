@@ -32,7 +32,7 @@ fvm dart run build_runner build
 fvm flutter run
 ```
 
-The application identifier is `com.jamhorse.app`. Android supports API 23+,
+The application identifier is `com.aspenini.jamhorse`. Android supports API 23+,
 iOS supports 14+, and macOS supports 12+.
 
 Plain HTTP is accepted only when the user explicitly enables it for literal
