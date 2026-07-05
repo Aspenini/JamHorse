@@ -45,11 +45,13 @@ android {
 
     buildTypes {
         release {
+            // Falls back to debug signing so local builds still produce an
+            // installable APK; unsigned APKs are rejected by Android.
             signingConfig =
                 if (keystorePropertiesFile.exists()) {
                     signingConfigs.getByName("release")
                 } else {
-                    null
+                    signingConfigs.getByName("debug")
                 }
         }
     }

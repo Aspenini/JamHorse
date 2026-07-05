@@ -62,10 +62,17 @@ jobs:
           } > android/key.properties
       - run: flutter pub get
       - run: flutter build appbundle --release --dart-define=CAST_RECEIVER_APP_ID="$CAST_RECEIVER_APP_ID"
+      # The .aab is for Play Store uploads only; the .apk is the sideloadable
+      # build people can install directly on a phone.
+      - run: flutter build apk --release --dart-define=CAST_RECEIVER_APP_ID="$CAST_RECEIVER_APP_ID"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: JamHorse-Android
           path: build/app/outputs/bundle/release/app-release.aab
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: JamHorse-Android-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
 
   apple:
     needs: preflight
