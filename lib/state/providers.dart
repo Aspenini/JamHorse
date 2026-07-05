@@ -104,6 +104,18 @@ class SearchQueryController extends Notifier<String> {
   void set(String value) => state = value;
 }
 
+/// Whether the Now Playing side panel is slid in, Spotify style.
+final nowPlayingViewProvider = NotifierProvider<NowPlayingViewController, bool>(
+  NowPlayingViewController.new,
+);
+
+class NowPlayingViewController extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  void set(bool visible) => state = visible;
+}
+
 final playbackSnapshotProvider = StreamProvider<PlaybackSnapshot>((ref) {
   final player = ref.watch(playbackCoordinatorProvider);
   return player.snapshots;

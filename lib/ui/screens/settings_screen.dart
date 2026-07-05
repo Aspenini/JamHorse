@@ -8,6 +8,7 @@ import 'package:jamhorse/app/theme.dart';
 import 'package:jamhorse/core/artwork_cache.dart';
 import 'package:jamhorse/core/logging.dart';
 import 'package:jamhorse/domain/models.dart';
+import 'package:jamhorse/platform/discord_presence.dart';
 import 'package:jamhorse/platform/window_decorations.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/widgets/brand.dart';
@@ -198,6 +199,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 ? WindowDecorationMode.custom
                                 : WindowDecorationMode.native,
                           ),
+                    ),
+                  ],
+                ),
+              if (supportsDiscordPresence)
+                _Section(
+                  title: 'Integrations',
+                  children: [
+                    SwitchListTile.adaptive(
+                      secondary: const Icon(Icons.discord_rounded),
+                      title: const Text('Discord Rich Presence'),
+                      subtitle: const Text(
+                        "Show what you're listening to on Discord",
+                      ),
+                      value: ref.watch(discordPresenceProvider),
+                      onChanged: (enabled) => ref
+                          .read(discordPresenceProvider.notifier)
+                          .setEnabled(enabled),
                     ),
                   ],
                 ),

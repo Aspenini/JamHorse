@@ -78,7 +78,7 @@ class AdaptiveShell extends ConsumerWidget {
   }
 }
 
-class _SpotifyDesktopShell extends StatelessWidget {
+class _SpotifyDesktopShell extends ConsumerWidget {
   const _SpotifyDesktopShell({
     required this.path,
     required this.customDecorations,
@@ -90,9 +90,9 @@ class _SpotifyDesktopShell extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.sizeOf(context).width;
-    final showNowPlaying = width >= 1520;
+    final showNowPlaying = ref.watch(nowPlayingViewProvider);
     final libraryWidth = width >= 1900
         ? 510.0
         : width >= 1320
@@ -123,19 +123,72 @@ class _SpotifyDesktopShell extends StatelessWidget {
                       child: EntranceMotion(watchKey: path, child: child),
                     ),
                   ),
-                  if (showNowPlaying) ...[
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: nowPlayingWidth,
-                      child: const SpotifyPanel(child: _NowPlayingPanel()),
-                    ),
-                  ],
+                  _NowPlayingDrawer(
+                    width: nowPlayingWidth,
+                    open: showNowPlaying,
+                  ),
+                  if (!showNowPlaying) const _NowPlayingHandle(),
                 ],
               ),
             ),
           ),
           const PlayerBar(),
         ],
+      ),
+    );
+  }
+}
+
+class _NowPlayingDrawer extends StatelessWidget {
+  const _NowPlayingDrawer({required this.width, required this.open});
+
+  final double width;
+  final bool open;
+
+  @override
+  Widget build(BuildContext context) {
+    // 8px gap to the main panel travels with the drawer.
+    final fullWidth = width + 8;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      width: open ? fullWidth : 0,
+      // The panel keeps its full-width layout while the drawer animates; the
+      // clip makes it slide in from the window edge instead of squishing.
+      child: ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.centerLeft,
+          minWidth: fullWidth,
+          maxWidth: fullWidth,
+          child: const Padding(
+            padding: EdgeInsets.only(left: 8),
+            child: SpotifyPanel(child: _NowPlayingPanel()),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NowPlayingHandle extends ConsumerWidget {
+  const _NowPlayingHandle();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SizedBox(
+      width: 26,
+      child: Center(
+        child: IconButton(
+          tooltip: 'Show Now Playing view',
+          onPressed: () => ref.read(nowPlayingViewProvider.notifier).set(true),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 26, height: 52),
+          icon: const Icon(
+            Icons.chevron_left_rounded,
+            color: JamColors.muted,
+            size: 24,
+          ),
+        ),
       ),
     );
   }
@@ -247,14 +300,7 @@ class _GlobalTopBarState extends ConsumerState<_GlobalTopBar> {
                                   _search('');
                                 },
                                 icon: const Icon(Icons.close_rounded),
-                              )
-                            else ...[
-                              const SizedBox(
-                                height: 30,
-                                child: VerticalDivider(color: JamColors.subtle),
                               ),
-                              const Icon(Icons.inventory_2_outlined, size: 25),
-                            ],
                           ],
                           onChanged: _search,
                           onSubmitted: _search,
@@ -269,24 +315,6 @@ class _GlobalTopBarState extends ConsumerState<_GlobalTopBar> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    IconButton(
-                      tooltip: 'Notifications',
-                      onPressed: () {},
-                      icon: const Icon(Icons.notifications_none_rounded),
-                    ),
-                    IconButton(
-                      tooltip: 'Friend activity',
-                      onPressed: () =>
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Friend activity is not available on Jellyfin.',
-                              ),
-                            ),
-                          ),
-                      icon: const Icon(Icons.group_outlined),
-                    ),
-                    const SizedBox(width: 8),
                     HoverScale(
                       hoverScale: 1.08,
                       child: Tooltip(
@@ -753,15 +781,25 @@ class _NowPlayingPanel extends ConsumerWidget {
     if (item == null) {
       return const EntranceMotion(
         watchKey: 'empty',
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.all(28),
-            child: Text(
-              'Play something to see it here.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: JamColors.muted),
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(24, 16, 12, 0),
+              child: _NowPlayingHeader(title: 'Now playing'),
             ),
-          ),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(28),
+                  child: Text(
+                    'Play something to see it here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: JamColors.muted),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -782,13 +820,8 @@ class _NowPlayingPanel extends ConsumerWidget {
         key: ValueKey(item.id),
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         children: [
-          Text(
-            item.albumName ?? 'Now playing',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 28),
+          _NowPlayingHeader(title: item.albumName ?? 'Now playing'),
+          const SizedBox(height: 16),
           HoverScale(
             hoverScale: 1.012,
             pressedScale: 1,
@@ -905,6 +938,33 @@ class _NowPlayingPanel extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _NowPlayingHeader extends ConsumerWidget {
+  const _NowPlayingHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+        ),
+        IconButton(
+          tooltip: 'Hide Now Playing view',
+          onPressed: () => ref.read(nowPlayingViewProvider.notifier).set(false),
+          icon: const Icon(Icons.last_page_rounded, color: JamColors.muted),
+        ),
+      ],
     );
   }
 }

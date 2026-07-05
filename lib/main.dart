@@ -13,6 +13,7 @@ import 'package:jamhorse/data/jellyfin_gateway.dart';
 import 'package:jamhorse/data/pre_release_reset.dart';
 import 'package:jamhorse/data/report_buffer.dart';
 import 'package:jamhorse/domain/models.dart';
+import 'package:jamhorse/platform/discord_presence.dart';
 import 'package:jamhorse/platform/window_decorations.dart';
 import 'package:jamhorse/playback/jamhorse_audio_handler.dart';
 import 'package:jamhorse/state/providers.dart';
@@ -26,6 +27,7 @@ Future<void> main() async {
   await PreReleaseReset.runIfNeeded();
   final windowDecorationMode = await loadWindowDecorationMode();
   seedWindowDecorationMode(windowDecorationMode);
+  seedDiscordPresenceEnabled(await loadDiscordPresenceEnabled());
 
   if (Platform.isWindows || Platform.isLinux) {
     JustAudioMediaKit.ensureInitialized(
