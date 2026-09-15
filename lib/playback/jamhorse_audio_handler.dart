@@ -1,56 +1,85 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:collection/collection.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:jamhorse/core/logging.dart';
 import 'package:jamhorse/data/database.dart' as db;
 import 'package:jamhorse/domain/contracts.dart';
 import 'package:jamhorse/domain/models.dart' as domain;
+import 'package:jamhorse/playback/queue_shuffle_order.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
-/// Returns a playable local file path for a downloaded track, or null to
-/// stream it from the server.
-typedef LocalSourceResolver = Future<String?> Function(domain.LibraryItem item);
+/// Local file paths of one profile's finished downloads, keyed by item id.
+typedef LocalSourceResolver =
+    Future<Map<String, String>> Function(String profileId);
 typedef ArtworkResolver =
     Future<Uri?> Function(domain.AuthSession session, domain.LibraryItem item);
+
+/// Playable tracks for an album, artist, playlist, or genre.
+typedef TrackResolver =
+    Future<List<domain.LibraryItem>> Function(
+      domain.AuthSession session,
+      domain.LibraryItem item,
+    );
 
 class JamHorseAudioHandler extends BaseAudioHandler
     with QueueHandler, SeekHandler
     implements PlaybackCoordinator {
   JamHorseAudioHandler(
     this._gateway, {
+    required this._reporter,
+    this._tracksFor,
     AudioPlayer? player,
     this._localSourceResolver,
     this._artworkResolver,
-    db.AppDatabase? database,
+    this._database,
   }) : _player = player ?? AudioPlayer() {
-    _database = database;
     _bindPlayer();
   }
 
+  /// Coalesces bursts of queue and state changes into one write.
+  static const _persistDelay = Duration(seconds: 2);
+
+  /// While playing: how often position is saved and reported to Jellyfin.
+  static const _heartbeat = Duration(seconds: 10);
+
   final JellyfinGateway _gateway;
+  final PlaybackReporter _reporter;
+  final TrackResolver? _tracksFor;
   final AudioPlayer _player;
   final LocalSourceResolver? _localSourceResolver;
   final ArtworkResolver? _artworkResolver;
-  late final db.AppDatabase? _database;
+  final db.AppDatabase? _database;
   final _snapshots = StreamController<domain.PlaybackSnapshot>.broadcast();
   final _subscriptions = <StreamSubscription<dynamic>>[];
+  final _localArtwork = <String, Uri>{};
 
   domain.AuthSession? _session;
   List<domain.LibraryItem> _items = const [];
+  List<int> _playOrder = const [];
   List<domain.LibraryItem> _browseLibrary = const [];
-  final _localArtwork = <String, Uri>{};
   domain.PlaybackSnapshot _snapshot = const domain.PlaybackSnapshot();
-  Timer? _reportTimer;
+  QueueShuffleOrder _shuffleOrder = QueueShuffleOrder();
   Timer? _sleepTimer;
   Timer? _persistTimer;
   bool _reportInFlight = false;
   bool _loading = false;
+  bool _queueDirty = false;
   int _loadGeneration = 0;
+  int? _lastIndex;
+
+  /// Tracks inserted with "Play next" / "Add to queue" that have not played
+  /// yet; new "Add to queue" items go after them.
+  int _queuedAhead = 0;
+
+  /// A queue restored at launch has not started playing, so Jellyfin hears
+  /// about it only once the user presses play.
+  bool _startReportPending = false;
   domain.LibraryItem? _reportedItem;
   Duration _reportedPosition = Duration.zero;
   String? _playSessionId;
@@ -59,8 +88,10 @@ class JamHorseAudioHandler extends BaseAudioHandler
   Future<void> initialize() async {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
-    _reportTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (!_reportInFlight) unawaited(_reportProgress());
+    Timer.periodic(_heartbeat, (_) {
+      if (!_player.playing) return;
+      _schedulePersist();
+      unawaited(_reportProgress());
     });
   }
 
@@ -79,6 +110,24 @@ class JamHorseAudioHandler extends BaseAudioHandler
     List<domain.LibraryItem> queueItems, {
     int initialIndex = 0,
     bool autoPlay = true,
+    bool? shuffle,
+  }) {
+    return _loadQueue(
+      session,
+      queueItems,
+      initialIndex: initialIndex,
+      autoPlay: autoPlay,
+      shuffle: shuffle,
+    );
+  }
+
+  Future<void> _loadQueue(
+    domain.AuthSession session,
+    List<domain.LibraryItem> queueItems, {
+    required int initialIndex,
+    required bool autoPlay,
+    bool? shuffle,
+    Duration initialPosition = Duration.zero,
   }) async {
     if (queueItems.isEmpty) return;
     final generation = ++_loadGeneration;
@@ -87,57 +136,77 @@ class JamHorseAudioHandler extends BaseAudioHandler
     _loading = true;
     _session = session;
     _items = List.unmodifiable(queueItems);
+    _queuedAhead = 0;
+    _startReportPending = false;
 
     try {
-      final mediaItems = queueItems.map(_toMediaItem).toList(growable: false);
-      queue.add(mediaItems);
-      final maxBitrate = await _preferredBitrate();
+      queue.add(_items.map(_toMediaItem).toList(growable: false));
+      final sources = await _createSources(session, queueItems);
       if (generation != _loadGeneration) return;
-      final sources = <AudioSource>[];
-      for (final item in queueItems) {
-        sources.add(await _createSource(session, item, maxBitrate));
-        if (generation != _loadGeneration) return;
-      }
       final safeIndex = initialIndex.clamp(0, queueItems.length - 1);
+      _shuffleOrder = QueueShuffleOrder();
       await _player.setAudioSources(
         sources,
         initialIndex: safeIndex,
-        initialPosition: Duration.zero,
+        initialPosition: initialPosition,
         preload: autoPlay,
+        shuffleOrder: _shuffleOrder,
       );
       if (generation != _loadGeneration) return;
-      _updateSnapshot();
-      mediaItem.add(_toMediaItem(_items[safeIndex]));
-      unawaited(_resolveArtwork(session, _items[safeIndex], generation));
-      _reportedItem = _items[safeIndex];
-      _reportedPosition = Duration.zero;
-      _playSessionId = const Uuid().v4();
-      await _reportStarted();
+      final shuffled = shuffle ?? _player.shuffleModeEnabled;
+      if (shuffled) await _player.shuffle();
+      if (shuffled != _player.shuffleModeEnabled) {
+        await _player.setShuffleModeEnabled(shuffled);
+      }
       if (generation != _loadGeneration) return;
-      await _database?.markDownloadPlayed(
-        session.profile.profileId,
-        _items[safeIndex].id,
-      );
-      if (generation != _loadGeneration) return;
+      _refreshPlayOrder();
+      _lastIndex = safeIndex;
+      _beginItem(session, _items[safeIndex], generation);
+      _queueDirty = true;
       _schedulePersist();
-      if (autoPlay) await play();
+      _updateSnapshot(forcePlatformUpdate: true);
     } finally {
       if (generation == _loadGeneration) _loading = false;
+    }
+    if (generation != _loadGeneration) return;
+    if (autoPlay) {
+      await _reportStarted();
+      // just_audio's play() completes only when playback pauses, so it is not
+      // awaited: holding the load open would suppress track-change handling.
+      unawaited(_startPlayback());
+    } else {
+      _startReportPending = true;
     }
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    if (_startReportPending) {
+      _startReportPending = false;
+      unawaited(_reportStarted());
+    }
+    await _player.play();
+  }
+
+  Future<void> _startPlayback() async {
+    try {
+      await _player.play();
+    } catch (error) {
+      appLog.warning('Playback could not start: $error');
+    }
+  }
 
   @override
   Future<void> pause() async {
     await _player.pause();
+    await persistNow();
     await _reportProgress();
   }
 
   @override
   Future<void> seek(Duration position) async {
     await _player.seek(position);
+    _schedulePersist();
     await _reportProgress();
   }
 
@@ -173,6 +242,9 @@ class JamHorseAudioHandler extends BaseAudioHandler
   }
 
   @override
+  Future<void> skipToQueueItem(int index) => skipToIndex(index);
+
+  @override
   Future<void> moveQueueItem(int from, int to) async {
     if (from < 0 ||
         from >= _items.length ||
@@ -186,9 +258,7 @@ class JamHorseAudioHandler extends BaseAudioHandler
     mutable.insert(to, item);
     _items = List.unmodifiable(mutable);
     await _player.moveAudioSource(from, to);
-    queue.add(_items.map(_toMediaItem).toList(growable: false));
-    _updateSnapshot();
-    _schedulePersist();
+    _queueChanged();
   }
 
   @override
@@ -197,7 +267,62 @@ class JamHorseAudioHandler extends BaseAudioHandler
     final mutable = _items.toList()..removeAt(index);
     _items = List.unmodifiable(mutable);
     await _player.removeAudioSourceAt(index);
+    _queueChanged();
+  }
+
+  @override
+  Future<void> playNext(List<domain.LibraryItem> items) {
+    return _insertUpNext(items, afterQueued: false);
+  }
+
+  @override
+  Future<void> addToQueue(List<domain.LibraryItem> items) {
+    return _insertUpNext(items, afterQueued: true);
+  }
+
+  Future<void> _insertUpNext(
+    List<domain.LibraryItem> items, {
+    required bool afterQueued,
+  }) async {
+    final session = _session;
+    if (session == null) return;
+    final accepted = items
+        .where((item) => item.profileId == session.profile.profileId)
+        .toList(growable: false);
+    if (accepted.isEmpty) return;
+    if (_items.isEmpty || _player.currentIndex == null) {
+      return _loadQueue(session, accepted, initialIndex: 0, autoPlay: true);
+    }
+    final generation = _loadGeneration;
+    final sources = await _createSources(session, accepted);
+    final current = _player.currentIndex;
+    if (generation != _loadGeneration || current == null) return;
+
+    final ahead = afterQueued ? _queuedAhead : 0;
+    final int insertAt;
+    if (_player.shuffleModeEnabled) {
+      // Sources go at the end; the shuffle order places them right after the
+      // current track (and earlier queued picks) in play order.
+      final position = _player.shuffleIndices.indexOf(current);
+      _shuffleOrder.anchorNextInsert(position + 1 + ahead);
+      insertAt = _items.length;
+    } else {
+      insertAt = min(current + 1 + ahead, _items.length);
+    }
+    await _player.insertAudioSources(insertAt, sources);
+    _items = List.unmodifiable([
+      ..._items.take(insertAt),
+      ...accepted,
+      ..._items.skip(insertAt),
+    ]);
+    _queuedAhead += accepted.length;
+    _queueChanged();
+  }
+
+  void _queueChanged() {
+    _refreshPlayOrder();
     queue.add(_items.map(_toMediaItem).toList(growable: false));
+    _queueDirty = true;
     _updateSnapshot();
     _schedulePersist();
   }
@@ -206,6 +331,8 @@ class JamHorseAudioHandler extends BaseAudioHandler
   Future<void> setShuffle(bool enabled) async {
     if (enabled) await _player.shuffle();
     await _player.setShuffleModeEnabled(enabled);
+    _queuedAhead = 0;
+    _refreshPlayOrder();
     _updateSnapshot();
     _schedulePersist();
   }
@@ -229,23 +356,16 @@ class JamHorseAudioHandler extends BaseAudioHandler
   @override
   Future<void> setSleepTimer(Duration? duration) async {
     _sleepTimer?.cancel();
-    final deadline = duration == null ? null : DateTime.now().add(duration);
-    _snapshot = domain.PlaybackSnapshot(
-      queue: _snapshot.queue,
-      position: _snapshot.position,
-      bufferedPosition: _snapshot.bufferedPosition,
-      playing: _snapshot.playing,
-      buffering: _snapshot.buffering,
-      volume: _snapshot.volume,
-      sleepDeadline: deadline,
-    );
+    _snapshot = duration == null
+        ? _snapshot.copyWith(clearSleepDeadline: true)
+        : _snapshot.copyWith(sleepDeadline: DateTime.now().add(duration));
     if (duration != null) {
       _sleepTimer = Timer(duration, () async {
         await pause();
         await setSleepTimer(null);
       });
     }
-    _snapshots.add(_snapshot);
+    if (!_snapshots.isClosed) _snapshots.add(_snapshot);
     _schedulePersist();
   }
 
@@ -266,7 +386,6 @@ class JamHorseAudioHandler extends BaseAudioHandler
     queue.add(mediaItems);
     if (_player.currentIndex == index) mediaItem.add(mediaItems[index]);
     _updateSnapshot();
-    _schedulePersist();
   }
 
   @override
@@ -274,8 +393,27 @@ class JamHorseAudioHandler extends BaseAudioHandler
     _loadGeneration++;
     _loading = false;
     await _reportStopped();
+    await persistNow();
     await _player.stop();
     return super.stop();
+  }
+
+  @override
+  Future<void> reset() async {
+    await stop();
+    _sleepTimer?.cancel();
+    _session = null;
+    _items = const [];
+    _playOrder = const [];
+    _browseLibrary = const [];
+    _queuedAhead = 0;
+    _lastIndex = null;
+    _startReportPending = false;
+    _queueDirty = false;
+    _snapshot = const domain.PlaybackSnapshot();
+    queue.add(const []);
+    mediaItem.add(null);
+    if (!_snapshots.isClosed) _snapshots.add(_snapshot);
   }
 
   @override
@@ -301,6 +439,7 @@ class JamHorseAudioHandler extends BaseAudioHandler
           if (state.processingState == ProcessingState.completed &&
               _player.loopMode == LoopMode.off) {
             unawaited(_reportStopped());
+            unawaited(persistNow());
           }
         }),
       )
@@ -308,7 +447,6 @@ class JamHorseAudioHandler extends BaseAudioHandler
         _player.positionStream.listen((position) {
           _reportedPosition = position;
           _updateSnapshot();
-          _schedulePersist();
         }),
       )
       ..add(_player.bufferedPositionStream.listen((_) => _updateSnapshot()))
@@ -327,32 +465,57 @@ class JamHorseAudioHandler extends BaseAudioHandler
     if (_loading || index == null || index < 0 || index >= _items.length) {
       return;
     }
+    _consumeQueuedAhead(index);
     _transitionSerial = _transitionSerial.then((_) async {
-      if (_reportedItem?.id == _items[index].id &&
-          _reportedItem?.profileId == _items[index].profileId) {
+      final session = _session;
+      if (session == null || index >= _items.length) return;
+      final item = _items[index];
+      if (_reportedItem?.id == item.id &&
+          _reportedItem?.profileId == item.profileId) {
         _updateSnapshot();
         return;
       }
       await _reportStopped();
       _updateSnapshot();
-      mediaItem.add(_toMediaItem(_items[index]));
-      final session = _session;
-      if (session != null) {
-        unawaited(_resolveArtwork(session, _items[index], _loadGeneration));
-      }
-      _reportedItem = _items[index];
-      _reportedPosition = Duration.zero;
-      _playSessionId = const Uuid().v4();
-      await _reportStarted();
-      if (session != null) {
-        await _database?.markDownloadPlayed(
-          session.profile.profileId,
-          _items[index].id,
-        );
+      _beginItem(session, item, _loadGeneration);
+      if (_player.playing) {
+        await _reportStarted();
+      } else {
+        _startReportPending = true;
       }
       _schedulePersist();
     });
     await _transitionSerial;
+  }
+
+  /// Moving forward through queued picks uses them up; jumping backwards
+  /// abandons the rest of the manual queue, as in Spotify.
+  void _consumeQueuedAhead(int index) {
+    final previous = _lastIndex;
+    _lastIndex = index;
+    if (previous == null || _queuedAhead == 0) return;
+    final order = _playOrder.length == _items.length ? _playOrder : null;
+    final from = order?.indexOf(previous) ?? previous;
+    final to = order?.indexOf(index) ?? index;
+    _queuedAhead = to > from ? max(0, _queuedAhead - (to - from)) : 0;
+  }
+
+  void _refreshPlayOrder() {
+    _playOrder = _player.shuffleModeEnabled
+        ? List.unmodifiable(_player.shuffleIndices)
+        : const [];
+  }
+
+  void _beginItem(
+    domain.AuthSession session,
+    domain.LibraryItem item,
+    int generation,
+  ) {
+    mediaItem.add(_toMediaItem(item));
+    unawaited(_resolveArtwork(session, item, generation));
+    _reportedItem = item;
+    _reportedPosition = Duration.zero;
+    _playSessionId = const Uuid().v4();
   }
 
   // Non-positional state last sent to the platform; position between pushes
@@ -372,6 +535,7 @@ class JamHorseAudioHandler extends BaseAudioHandler
         currentIndex: index,
         shuffle: _player.shuffleModeEnabled,
         repeatMode: repeatMode,
+        playOrder: _playOrder,
       ),
       position: _player.position,
       bufferedPosition: _player.bufferedPosition,
@@ -442,19 +606,30 @@ class JamHorseAudioHandler extends BaseAudioHandler
     };
   }
 
-  Future<AudioSource> _createSource(
+  Future<List<AudioSource>> _createSources(
     domain.AuthSession session,
-    domain.LibraryItem item,
-    int? maxBitrate,
+    List<domain.LibraryItem> items,
   ) async {
-    final localPath = await _localSourceResolver?.call(item);
-    return localPath != null
-        ? AudioSource.uri(Uri.file(localPath), tag: _toMediaItem(item))
-        : AudioSource.uri(
+    final maxBitrate = await _preferredBitrate();
+    var localPaths = const <String, String>{};
+    try {
+      localPaths =
+          await _localSourceResolver?.call(session.profile.profileId) ??
+          const {};
+    } catch (error) {
+      appLog.warning('Downloaded tracks unavailable, streaming: $error');
+    }
+    return [
+      for (final item in items)
+        if (localPaths[item.id] case final path?)
+          AudioSource.uri(Uri.file(path), tag: _toMediaItem(item))
+        else
+          AudioSource.uri(
             _gateway.streamUri(session, item, maxBitrate: maxBitrate),
             headers: _gateway.playbackHeaders(session),
             tag: _toMediaItem(item),
-          );
+          ),
+    ];
   }
 
   @override
@@ -465,19 +640,29 @@ class JamHorseAudioHandler extends BaseAudioHandler
     final database = _database;
     if (database == null) return;
     await setBrowseLibrary(session, library);
-    final rows = await database.queueFor(session.profile.profileId);
+    final profileId = session.profile.profileId;
+    final rows = await database.queueFor(profileId);
+    final saved = await database.playbackStateFor(profileId);
     final byId = {for (final item in library) item.id: item};
-    final restored = [
-      for (final row in rows)
-        if (byId[row.itemId] != null) byId[row.itemId]!,
-    ];
+    // Map the saved index through any tracks that have left the library.
+    var index = 0;
+    final restored = <domain.LibraryItem>[];
+    for (final row in rows) {
+      final item = byId[row.itemId];
+      if (item == null) continue;
+      if (row.queueIndex == saved?.currentIndex) index = restored.length;
+      restored.add(item);
+    }
     if (restored.isEmpty) return;
-    final saved = await database.playbackStateFor(session.profile.profileId);
-    final index = (saved?.currentIndex ?? 0).clamp(0, restored.length - 1);
-    await load(session, restored, initialIndex: index, autoPlay: false);
-    final position = Duration(milliseconds: saved?.positionMs ?? 0);
-    if (position > Duration.zero) await _player.seek(position);
-    if (saved?.shuffle ?? false) await setShuffle(true);
+    await _loadQueue(
+      session,
+      restored,
+      initialIndex: index,
+      autoPlay: false,
+      shuffle: saved?.shuffle ?? false,
+      initialPosition: Duration(milliseconds: saved?.positionMs ?? 0),
+    );
+    _queueDirty = false;
     final repeat = domain.RepeatMode.values.firstWhere(
       (value) => value.name == saved?.repeatMode,
       orElse: () => domain.RepeatMode.off,
@@ -532,16 +717,10 @@ class JamHorseAudioHandler extends BaseAudioHandler
     if (!parentMediaId.startsWith('category:')) return const [];
     final category = parentMediaId.substring('category:'.length);
     Set<String> downloadedIds = const {};
-    if (category == 'downloads' && _database != null && _session != null) {
-      final downloads = await _database.allDownloads();
-      downloadedIds = downloads
-          .where(
-            (entry) =>
-                entry.profileId == _session!.profile.profileId &&
-                entry.status == 'complete',
-          )
-          .map((entry) => entry.itemId)
-          .toSet();
+    final session = _session;
+    if (category == 'downloads' && session != null) {
+      final paths = await _localSourceResolver?.call(session.profile.profileId);
+      downloadedIds = paths?.keys.toSet() ?? const {};
     }
     final selected = _browseLibrary
         .where((item) {
@@ -597,9 +776,20 @@ class JamHorseAudioHandler extends BaseAudioHandler
     final selected = _browseLibrary.where((item) => item.id == id).firstOrNull;
     if (selected == null) return;
     if (selected.type == domain.LibraryItemType.track) {
-      final tracks = _browseLibrary
-          .where((item) => item.type == domain.LibraryItemType.track)
-          .toList(growable: false);
+      // Queue the track's album around it rather than the whole library.
+      final album =
+          _browseLibrary
+              .where(
+                (item) =>
+                    item.type == domain.LibraryItemType.track &&
+                    item.albumId != null &&
+                    item.albumId == selected.albumId,
+              )
+              .toList()
+            ..sort(domain.compareTrackOrder);
+      final tracks = album.any((item) => item.id == selected.id)
+          ? album
+          : [selected];
       await load(
         session,
         tracks,
@@ -607,50 +797,60 @@ class JamHorseAudioHandler extends BaseAudioHandler
       );
       return;
     }
-    final tracks = await _gateway.fetchLibrary(
-      session,
-      types: const {domain.LibraryItemType.track},
-      parentId: selected.id,
-      sortBy: 'ParentIndexNumber,IndexNumber,SortName',
-      limit: 5000,
-    );
+    final tracks = await _tracksFor?.call(session, selected) ?? const [];
     if (tracks.isNotEmpty) await load(session, tracks);
   }
 
-  void _schedulePersist() {
-    if (_database == null || _session == null || _items.isEmpty) return;
+  @override
+  Future<void> persistNow() async {
     _persistTimer?.cancel();
-    _persistTimer = Timer(
-      const Duration(seconds: 1),
-      () => unawaited(_persistQueue()),
-    );
+    _persistTimer = null;
+    await _persist();
   }
 
-  Future<void> _persistQueue() async {
+  /// Throttled, not debounced: position updates arrive several times a
+  /// second, and a debounce would never fire while music plays.
+  void _schedulePersist() {
+    if (_database == null || _session == null || _items.isEmpty) return;
+    _persistTimer ??= Timer(_persistDelay, () {
+      _persistTimer = null;
+      unawaited(_persist());
+    });
+  }
+
+  Future<void> _persist() async {
     final database = _database;
     final session = _session;
     if (database == null || session == null || _items.isEmpty) return;
     final profileId = session.profile.profileId;
-    await database.replaceQueue(
-      profileId,
-      [
-        for (var index = 0; index < _items.length; index++)
-          db.QueueEntriesCompanion.insert(
-            profileId: profileId,
-            queueIndex: index,
-            itemId: _items[index].id,
-            isCurrent: Value(index == _player.currentIndex),
-          ),
-      ],
-      db.PlaybackStatesCompanion.insert(
-        profileId: profileId,
-        currentIndex: Value(_player.currentIndex ?? -1),
-        positionMs: Value(_player.position.inMilliseconds),
-        shuffle: Value(_player.shuffleModeEnabled),
-        repeatMode: Value(_snapshot.queue.repeatMode.name),
-        sleepDeadline: Value(_snapshot.sleepDeadline),
-      ),
+    final state = db.PlaybackStatesCompanion.insert(
+      profileId: profileId,
+      currentIndex: Value(_player.currentIndex ?? -1),
+      positionMs: Value(_player.position.inMilliseconds),
+      shuffle: Value(_player.shuffleModeEnabled),
+      repeatMode: Value(_snapshot.queue.repeatMode.name),
+      sleepDeadline: Value(_snapshot.sleepDeadline),
     );
+    final writeQueue = _queueDirty;
+    _queueDirty = false;
+    try {
+      if (writeQueue) {
+        await database.replaceQueue(profileId, [
+          for (var index = 0; index < _items.length; index++)
+            db.QueueEntriesCompanion.insert(
+              profileId: profileId,
+              queueIndex: index,
+              itemId: _items[index].id,
+              isCurrent: Value(index == _player.currentIndex),
+            ),
+        ], state);
+      } else {
+        await database.savePlaybackState(state);
+      }
+    } catch (error) {
+      if (writeQueue) _queueDirty = true;
+      appLog.warning('Playback state could not be saved: $error');
+    }
   }
 
   MediaItem _toMediaItem(domain.LibraryItem item) {
@@ -698,13 +898,18 @@ class JamHorseAudioHandler extends BaseAudioHandler
     final item = _reportedItem;
     if (session == null || item == null) return;
     try {
-      await _gateway.reportPlaybackStarted(
+      await _reporter.reportPlaybackStarted(
         session,
         item,
         playSessionId: _playSessionId,
       );
     } catch (error) {
       appLog.warning('Playback start report deferred: $error');
+    }
+    try {
+      await _database?.markDownloadPlayed(session.profile.profileId, item.id);
+    } catch (error) {
+      appLog.fine('Download play time not recorded: $error');
     }
   }
 
@@ -715,7 +920,7 @@ class JamHorseAudioHandler extends BaseAudioHandler
     if (session == null || item == null) return;
     _reportInFlight = true;
     try {
-      await _gateway.reportPlaybackProgress(
+      await _reporter.reportPlaybackProgress(
         session,
         item,
         _player.position,
@@ -731,10 +936,11 @@ class JamHorseAudioHandler extends BaseAudioHandler
 
   MediaItem _toBrowsableMediaItem(domain.LibraryItem item) {
     final track = item.type == domain.LibraryItemType.track;
-    return _toMediaItem(item).copyWith(
+    final base = _toMediaItem(item);
+    return base.copyWith(
       id: 'item:${item.id}',
       playable: track,
-      extras: {...?_toMediaItem(item).extras, 'browsable': !track},
+      extras: {...?base.extras, 'browsable': !track},
     );
   }
 
@@ -743,11 +949,14 @@ class JamHorseAudioHandler extends BaseAudioHandler
     final item = _reportedItem;
     final position = _reportedPosition;
     final playSessionId = _playSessionId;
+    final started = !_startReportPending;
     if (session == null || item == null) return;
     _reportedItem = null;
     _playSessionId = null;
+    // Never report a stop for a restored track Jellyfin never saw start.
+    if (!started) return;
     try {
-      await _gateway.reportPlaybackStopped(
+      await _reporter.reportPlaybackStopped(
         session,
         item,
         position,
@@ -756,17 +965,5 @@ class JamHorseAudioHandler extends BaseAudioHandler
     } catch (error) {
       appLog.warning('Playback stop report deferred: $error');
     }
-  }
-
-  Future<void> disposeHandler() async {
-    _reportTimer?.cancel();
-    _sleepTimer?.cancel();
-    _persistTimer?.cancel();
-    await _persistQueue();
-    for (final subscription in _subscriptions) {
-      await subscription.cancel();
-    }
-    await _player.dispose();
-    await _snapshots.close();
   }
 }

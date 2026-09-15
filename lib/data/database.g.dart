@@ -838,6 +838,17 @@ class $CachedItemsTable extends CachedItems
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _dateCreatedMeta = const VerificationMeta(
+    'dateCreated',
+  );
+  @override
+  late final GeneratedColumn<DateTime> dateCreated = GeneratedColumn<DateTime>(
+    'date_created',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -869,6 +880,7 @@ class $CachedItemsTable extends CachedItems
     isFavorite,
     hasPrimaryImage,
     container,
+    dateCreated,
     updatedAt,
   ];
   @override
@@ -1013,6 +1025,15 @@ class $CachedItemsTable extends CachedItems
         container.isAcceptableOrUnknown(data['container']!, _containerMeta),
       );
     }
+    if (data.containsKey('date_created')) {
+      context.handle(
+        _dateCreatedMeta,
+        dateCreated.isAcceptableOrUnknown(
+          data['date_created']!,
+          _dateCreatedMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -1102,6 +1123,10 @@ class $CachedItemsTable extends CachedItems
         DriftSqlType.string,
         data['${effectivePrefix}container'],
       ),
+      dateCreated: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date_created'],
+      ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -1134,6 +1159,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
   final bool isFavorite;
   final bool hasPrimaryImage;
   final String? container;
+  final DateTime? dateCreated;
   final DateTime updatedAt;
   const CachedItem({
     required this.profileId,
@@ -1154,6 +1180,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
     required this.isFavorite,
     required this.hasPrimaryImage,
     this.container,
+    this.dateCreated,
     required this.updatedAt,
   });
   @override
@@ -1194,6 +1221,9 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
     map['has_primary_image'] = Variable<bool>(hasPrimaryImage);
     if (!nullToAbsent || container != null) {
       map['container'] = Variable<String>(container);
+    }
+    if (!nullToAbsent || dateCreated != null) {
+      map['date_created'] = Variable<DateTime>(dateCreated);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -1237,6 +1267,9 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
       container: container == null && nullToAbsent
           ? const Value.absent()
           : Value(container),
+      dateCreated: dateCreated == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dateCreated),
       updatedAt: Value(updatedAt),
     );
   }
@@ -1265,6 +1298,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
       isFavorite: serializer.fromJson<bool>(json['isFavorite']),
       hasPrimaryImage: serializer.fromJson<bool>(json['hasPrimaryImage']),
       container: serializer.fromJson<String?>(json['container']),
+      dateCreated: serializer.fromJson<DateTime?>(json['dateCreated']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -1290,6 +1324,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
       'isFavorite': serializer.toJson<bool>(isFavorite),
       'hasPrimaryImage': serializer.toJson<bool>(hasPrimaryImage),
       'container': serializer.toJson<String?>(container),
+      'dateCreated': serializer.toJson<DateTime?>(dateCreated),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -1313,6 +1348,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
     bool? isFavorite,
     bool? hasPrimaryImage,
     Value<String?> container = const Value.absent(),
+    Value<DateTime?> dateCreated = const Value.absent(),
     DateTime? updatedAt,
   }) => CachedItem(
     profileId: profileId ?? this.profileId,
@@ -1335,6 +1371,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
     isFavorite: isFavorite ?? this.isFavorite,
     hasPrimaryImage: hasPrimaryImage ?? this.hasPrimaryImage,
     container: container.present ? container.value : this.container,
+    dateCreated: dateCreated.present ? dateCreated.value : this.dateCreated,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   CachedItem copyWithCompanion(CachedItemsCompanion data) {
@@ -1371,6 +1408,9 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
           ? data.hasPrimaryImage.value
           : this.hasPrimaryImage,
       container: data.container.present ? data.container.value : this.container,
+      dateCreated: data.dateCreated.present
+          ? data.dateCreated.value
+          : this.dateCreated,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -1396,6 +1436,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
           ..write('isFavorite: $isFavorite, ')
           ..write('hasPrimaryImage: $hasPrimaryImage, ')
           ..write('container: $container, ')
+          ..write('dateCreated: $dateCreated, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -1421,6 +1462,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
     isFavorite,
     hasPrimaryImage,
     container,
+    dateCreated,
     updatedAt,
   );
   @override
@@ -1445,6 +1487,7 @@ class CachedItem extends DataClass implements Insertable<CachedItem> {
           other.isFavorite == this.isFavorite &&
           other.hasPrimaryImage == this.hasPrimaryImage &&
           other.container == this.container &&
+          other.dateCreated == this.dateCreated &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -1467,6 +1510,7 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
   final Value<bool> isFavorite;
   final Value<bool> hasPrimaryImage;
   final Value<String?> container;
+  final Value<DateTime?> dateCreated;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const CachedItemsCompanion({
@@ -1488,6 +1532,7 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
     this.isFavorite = const Value.absent(),
     this.hasPrimaryImage = const Value.absent(),
     this.container = const Value.absent(),
+    this.dateCreated = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1510,6 +1555,7 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
     this.isFavorite = const Value.absent(),
     this.hasPrimaryImage = const Value.absent(),
     this.container = const Value.absent(),
+    this.dateCreated = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   }) : profileId = Value(profileId),
@@ -1537,6 +1583,7 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
     Expression<bool>? isFavorite,
     Expression<bool>? hasPrimaryImage,
     Expression<String>? container,
+    Expression<DateTime>? dateCreated,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -1559,6 +1606,7 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
       if (isFavorite != null) 'is_favorite': isFavorite,
       if (hasPrimaryImage != null) 'has_primary_image': hasPrimaryImage,
       if (container != null) 'container': container,
+      if (dateCreated != null) 'date_created': dateCreated,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1583,6 +1631,7 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
     Value<bool>? isFavorite,
     Value<bool>? hasPrimaryImage,
     Value<String?>? container,
+    Value<DateTime?>? dateCreated,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
@@ -1605,6 +1654,7 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
       isFavorite: isFavorite ?? this.isFavorite,
       hasPrimaryImage: hasPrimaryImage ?? this.hasPrimaryImage,
       container: container ?? this.container,
+      dateCreated: dateCreated ?? this.dateCreated,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1667,6 +1717,9 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
     if (container.present) {
       map['container'] = Variable<String>(container.value);
     }
+    if (dateCreated.present) {
+      map['date_created'] = Variable<DateTime>(dateCreated.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -1697,6 +1750,7 @@ class CachedItemsCompanion extends UpdateCompanion<CachedItem> {
           ..write('isFavorite: $isFavorite, ')
           ..write('hasPrimaryImage: $hasPrimaryImage, ')
           ..write('container: $container, ')
+          ..write('dateCreated: $dateCreated, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -1783,17 +1837,6 @@ class $DownloadEntriesTable extends DownloadEntries
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
-  static const VerificationMeta _checksumMeta = const VerificationMeta(
-    'checksum',
-  );
-  @override
-  late final GeneratedColumn<String> checksum = GeneratedColumn<String>(
-    'checksum',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _lastPlayedAtMeta = const VerificationMeta(
     'lastPlayedAt',
   );
@@ -1825,7 +1868,6 @@ class $DownloadEntriesTable extends DownloadEntries
     filePath,
     progress,
     sizeBytes,
-    checksum,
     lastPlayedAt,
     updatedAt,
   ];
@@ -1888,12 +1930,6 @@ class $DownloadEntriesTable extends DownloadEntries
         sizeBytes.isAcceptableOrUnknown(data['size_bytes']!, _sizeBytesMeta),
       );
     }
-    if (data.containsKey('checksum')) {
-      context.handle(
-        _checksumMeta,
-        checksum.isAcceptableOrUnknown(data['checksum']!, _checksumMeta),
-      );
-    }
     if (data.containsKey('last_played_at')) {
       context.handle(
         _lastPlayedAtMeta,
@@ -1948,10 +1984,6 @@ class $DownloadEntriesTable extends DownloadEntries
         DriftSqlType.int,
         data['${effectivePrefix}size_bytes'],
       )!,
-      checksum: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}checksum'],
-      ),
       lastPlayedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_played_at'],
@@ -1977,7 +2009,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
   final String? filePath;
   final double progress;
   final int sizeBytes;
-  final String? checksum;
   final DateTime? lastPlayedAt;
   final DateTime updatedAt;
   const DownloadEntry({
@@ -1988,7 +2019,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
     this.filePath,
     required this.progress,
     required this.sizeBytes,
-    this.checksum,
     this.lastPlayedAt,
     required this.updatedAt,
   });
@@ -2004,9 +2034,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
     }
     map['progress'] = Variable<double>(progress);
     map['size_bytes'] = Variable<int>(sizeBytes);
-    if (!nullToAbsent || checksum != null) {
-      map['checksum'] = Variable<String>(checksum);
-    }
     if (!nullToAbsent || lastPlayedAt != null) {
       map['last_played_at'] = Variable<DateTime>(lastPlayedAt);
     }
@@ -2025,9 +2052,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
           : Value(filePath),
       progress: Value(progress),
       sizeBytes: Value(sizeBytes),
-      checksum: checksum == null && nullToAbsent
-          ? const Value.absent()
-          : Value(checksum),
       lastPlayedAt: lastPlayedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastPlayedAt),
@@ -2048,7 +2072,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
       filePath: serializer.fromJson<String?>(json['filePath']),
       progress: serializer.fromJson<double>(json['progress']),
       sizeBytes: serializer.fromJson<int>(json['sizeBytes']),
-      checksum: serializer.fromJson<String?>(json['checksum']),
       lastPlayedAt: serializer.fromJson<DateTime?>(json['lastPlayedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -2064,7 +2087,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
       'filePath': serializer.toJson<String?>(filePath),
       'progress': serializer.toJson<double>(progress),
       'sizeBytes': serializer.toJson<int>(sizeBytes),
-      'checksum': serializer.toJson<String?>(checksum),
       'lastPlayedAt': serializer.toJson<DateTime?>(lastPlayedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -2078,7 +2100,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
     Value<String?> filePath = const Value.absent(),
     double? progress,
     int? sizeBytes,
-    Value<String?> checksum = const Value.absent(),
     Value<DateTime?> lastPlayedAt = const Value.absent(),
     DateTime? updatedAt,
   }) => DownloadEntry(
@@ -2089,7 +2110,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
     filePath: filePath.present ? filePath.value : this.filePath,
     progress: progress ?? this.progress,
     sizeBytes: sizeBytes ?? this.sizeBytes,
-    checksum: checksum.present ? checksum.value : this.checksum,
     lastPlayedAt: lastPlayedAt.present ? lastPlayedAt.value : this.lastPlayedAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2102,7 +2122,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
       filePath: data.filePath.present ? data.filePath.value : this.filePath,
       progress: data.progress.present ? data.progress.value : this.progress,
       sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
-      checksum: data.checksum.present ? data.checksum.value : this.checksum,
       lastPlayedAt: data.lastPlayedAt.present
           ? data.lastPlayedAt.value
           : this.lastPlayedAt,
@@ -2120,7 +2139,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
           ..write('filePath: $filePath, ')
           ..write('progress: $progress, ')
           ..write('sizeBytes: $sizeBytes, ')
-          ..write('checksum: $checksum, ')
           ..write('lastPlayedAt: $lastPlayedAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2136,7 +2154,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
     filePath,
     progress,
     sizeBytes,
-    checksum,
     lastPlayedAt,
     updatedAt,
   );
@@ -2151,7 +2168,6 @@ class DownloadEntry extends DataClass implements Insertable<DownloadEntry> {
           other.filePath == this.filePath &&
           other.progress == this.progress &&
           other.sizeBytes == this.sizeBytes &&
-          other.checksum == this.checksum &&
           other.lastPlayedAt == this.lastPlayedAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -2164,7 +2180,6 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
   final Value<String?> filePath;
   final Value<double> progress;
   final Value<int> sizeBytes;
-  final Value<String?> checksum;
   final Value<DateTime?> lastPlayedAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -2176,7 +2191,6 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
     this.filePath = const Value.absent(),
     this.progress = const Value.absent(),
     this.sizeBytes = const Value.absent(),
-    this.checksum = const Value.absent(),
     this.lastPlayedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2189,7 +2203,6 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
     this.filePath = const Value.absent(),
     this.progress = const Value.absent(),
     this.sizeBytes = const Value.absent(),
-    this.checksum = const Value.absent(),
     this.lastPlayedAt = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -2206,7 +2219,6 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
     Expression<String>? filePath,
     Expression<double>? progress,
     Expression<int>? sizeBytes,
-    Expression<String>? checksum,
     Expression<DateTime>? lastPlayedAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -2219,7 +2231,6 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
       if (filePath != null) 'file_path': filePath,
       if (progress != null) 'progress': progress,
       if (sizeBytes != null) 'size_bytes': sizeBytes,
-      if (checksum != null) 'checksum': checksum,
       if (lastPlayedAt != null) 'last_played_at': lastPlayedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -2234,7 +2245,6 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
     Value<String?>? filePath,
     Value<double>? progress,
     Value<int>? sizeBytes,
-    Value<String?>? checksum,
     Value<DateTime?>? lastPlayedAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -2247,7 +2257,6 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
       filePath: filePath ?? this.filePath,
       progress: progress ?? this.progress,
       sizeBytes: sizeBytes ?? this.sizeBytes,
-      checksum: checksum ?? this.checksum,
       lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -2278,9 +2287,6 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
     if (sizeBytes.present) {
       map['size_bytes'] = Variable<int>(sizeBytes.value);
     }
-    if (checksum.present) {
-      map['checksum'] = Variable<String>(checksum.value);
-    }
     if (lastPlayedAt.present) {
       map['last_played_at'] = Variable<DateTime>(lastPlayedAt.value);
     }
@@ -2303,7 +2309,6 @@ class DownloadEntriesCompanion extends UpdateCompanion<DownloadEntry> {
           ..write('filePath: $filePath, ')
           ..write('progress: $progress, ')
           ..write('sizeBytes: $sizeBytes, ')
-          ..write('checksum: $checksum, ')
           ..write('lastPlayedAt: $lastPlayedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -3590,6 +3595,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $QueueEntriesTable queueEntries = $QueueEntriesTable(this);
   late final $PlaybackStatesTable playbackStates = $PlaybackStatesTable(this);
   late final $PendingReportsTable pendingReports = $PendingReportsTable(this);
+  late final Index downloadEntriesProfileItem = Index(
+    'download_entries_profile_item',
+    'CREATE INDEX download_entries_profile_item ON download_entries (profile_id, item_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3601,6 +3610,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     queueEntries,
     playbackStates,
     pendingReports,
+    downloadEntriesProfileItem,
   ];
 }
 
@@ -3927,6 +3937,7 @@ typedef $$CachedItemsTableCreateCompanionBuilder =
       Value<bool> isFavorite,
       Value<bool> hasPrimaryImage,
       Value<String?> container,
+      Value<DateTime?> dateCreated,
       required DateTime updatedAt,
       Value<int> rowid,
     });
@@ -3950,6 +3961,7 @@ typedef $$CachedItemsTableUpdateCompanionBuilder =
       Value<bool> isFavorite,
       Value<bool> hasPrimaryImage,
       Value<String?> container,
+      Value<DateTime?> dateCreated,
       Value<DateTime> updatedAt,
       Value<int> rowid,
     });
@@ -4050,6 +4062,11 @@ class $$CachedItemsTableFilterComposer
 
   ColumnFilters<String> get container => $composableBuilder(
     column: $table.container,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get dateCreated => $composableBuilder(
+    column: $table.dateCreated,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4158,6 +4175,11 @@ class $$CachedItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get dateCreated => $composableBuilder(
+    column: $table.dateCreated,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -4241,6 +4263,11 @@ class $$CachedItemsTableAnnotationComposer
   GeneratedColumn<String> get container =>
       $composableBuilder(column: $table.container, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get dateCreated => $composableBuilder(
+    column: $table.dateCreated,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
@@ -4294,6 +4321,7 @@ class $$CachedItemsTableTableManager
                 Value<bool> isFavorite = const Value.absent(),
                 Value<bool> hasPrimaryImage = const Value.absent(),
                 Value<String?> container = const Value.absent(),
+                Value<DateTime?> dateCreated = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedItemsCompanion(
@@ -4315,6 +4343,7 @@ class $$CachedItemsTableTableManager
                 isFavorite: isFavorite,
                 hasPrimaryImage: hasPrimaryImage,
                 container: container,
+                dateCreated: dateCreated,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),
@@ -4338,6 +4367,7 @@ class $$CachedItemsTableTableManager
                 Value<bool> isFavorite = const Value.absent(),
                 Value<bool> hasPrimaryImage = const Value.absent(),
                 Value<String?> container = const Value.absent(),
+                Value<DateTime?> dateCreated = const Value.absent(),
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
               }) => CachedItemsCompanion.insert(
@@ -4359,6 +4389,7 @@ class $$CachedItemsTableTableManager
                 isFavorite: isFavorite,
                 hasPrimaryImage: hasPrimaryImage,
                 container: container,
+                dateCreated: dateCreated,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),
@@ -4396,7 +4427,6 @@ typedef $$DownloadEntriesTableCreateCompanionBuilder =
       Value<String?> filePath,
       Value<double> progress,
       Value<int> sizeBytes,
-      Value<String?> checksum,
       Value<DateTime?> lastPlayedAt,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -4410,7 +4440,6 @@ typedef $$DownloadEntriesTableUpdateCompanionBuilder =
       Value<String?> filePath,
       Value<double> progress,
       Value<int> sizeBytes,
-      Value<String?> checksum,
       Value<DateTime?> lastPlayedAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -4457,11 +4486,6 @@ class $$DownloadEntriesTableFilterComposer
 
   ColumnFilters<int> get sizeBytes => $composableBuilder(
     column: $table.sizeBytes,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get checksum => $composableBuilder(
-    column: $table.checksum,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4520,11 +4544,6 @@ class $$DownloadEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get checksum => $composableBuilder(
-    column: $table.checksum,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<DateTime> get lastPlayedAt => $composableBuilder(
     column: $table.lastPlayedAt,
     builder: (column) => ColumnOrderings(column),
@@ -4565,9 +4584,6 @@ class $$DownloadEntriesTableAnnotationComposer
 
   GeneratedColumn<int> get sizeBytes =>
       $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
-
-  GeneratedColumn<String> get checksum =>
-      $composableBuilder(column: $table.checksum, builder: (column) => column);
 
   GeneratedColumn<DateTime> get lastPlayedAt => $composableBuilder(
     column: $table.lastPlayedAt,
@@ -4618,7 +4634,6 @@ class $$DownloadEntriesTableTableManager
                 Value<String?> filePath = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<int> sizeBytes = const Value.absent(),
-                Value<String?> checksum = const Value.absent(),
                 Value<DateTime?> lastPlayedAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -4630,7 +4645,6 @@ class $$DownloadEntriesTableTableManager
                 filePath: filePath,
                 progress: progress,
                 sizeBytes: sizeBytes,
-                checksum: checksum,
                 lastPlayedAt: lastPlayedAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -4644,7 +4658,6 @@ class $$DownloadEntriesTableTableManager
                 Value<String?> filePath = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<int> sizeBytes = const Value.absent(),
-                Value<String?> checksum = const Value.absent(),
                 Value<DateTime?> lastPlayedAt = const Value.absent(),
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -4656,7 +4669,6 @@ class $$DownloadEntriesTableTableManager
                 filePath: filePath,
                 progress: progress,
                 sizeBytes: sizeBytes,
-                checksum: checksum,
                 lastPlayedAt: lastPlayedAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:jamhorse/app/theme.dart';
 import 'package:jamhorse/domain/models.dart';
+import 'package:jamhorse/state/library_index.dart';
 import 'package:jamhorse/state/providers.dart';
-import 'package:jamhorse/ui/widgets/artwork.dart';
+import 'package:jamhorse/ui/layout.dart';
+import 'package:jamhorse/ui/widgets/media_row.dart';
+import 'package:jamhorse/ui/widgets/track_table.dart';
 
-/// Full grid of one library type, reached from a Home section's
-/// "Show all" link.
+/// Everything of one type in the library, reached from "Show all" links
+/// and the Home chips.
 class BrowseScreen extends ConsumerWidget {
   const BrowseScreen({required this.typeName, super.key});
 
@@ -19,10 +22,14 @@ class BrowseScreen extends ConsumerWidget {
       orElse: () => LibraryItemType.album,
     );
     final items = ref.watch(
-      appControllerProvider.select(
-        (state) => state.library
-            .where((item) => item.type == type)
-            .toList(growable: false),
+      libraryIndexProvider.select(
+        (index) => switch (type) {
+          LibraryItemType.album => index.albums,
+          LibraryItemType.artist => index.artists,
+          LibraryItemType.playlist => index.playlists,
+          LibraryItemType.genre => index.genres,
+          _ => index.tracks,
+        },
       ),
     );
     final title = switch (type) {
@@ -32,75 +39,62 @@ class BrowseScreen extends ConsumerWidget {
       LibraryItemType.genre => 'Genres',
       _ => 'Songs',
     };
+    final desktop = isDesktopLayout(context);
+    final controller = ref.read(appControllerProvider.notifier);
     return Scaffold(
+      backgroundColor: desktop ? Colors.transparent : JamColors.ink,
+      appBar: desktop
+          ? null
+          : AppBar(backgroundColor: JamColors.ink, title: Text(title)),
       body: items.isEmpty
           ? const Center(child: Text('Nothing here yet.'))
           : CustomScrollView(
               slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
-                  sliver: SliverToBoxAdapter(
-                    child: Text(
-                      title,
-                      style: Theme.of(context).textTheme.headlineLarge,
+                if (desktop)
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+                    sliver: SliverToBoxAdapter(
+                      child: Text(
+                        title,
+                        style: Theme.of(context).textTheme.headlineLarge,
+                      ),
                     ),
                   ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 48),
-                  sliver: SliverLayoutBuilder(
-                    builder: (context, constraints) {
-                      final width = constraints.crossAxisExtent;
-                      final extent = width >= 1200
-                          ? 210.0
-                          : width >= 700
-                          ? 190.0
-                          : 160.0;
-                      return SliverGrid.builder(
-                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: extent,
-                          mainAxisExtent: extent + 68,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 12,
-                        ),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          return ArtworkCard(
-                            item: item,
-                            width: extent,
-                            onPlay: () async {
-                              final controller = ref.read(
-                                appControllerProvider.notifier,
+                if (type == LibraryItemType.track) ...[
+                  if (desktop)
+                    const SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      sliver: SliverToBoxAdapter(child: TrackTableHeader()),
+                    ),
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      desktop ? 8 : 0,
+                      8,
+                      desktop ? 8 : 0,
+                      48,
+                    ),
+                    sliver: SliverList.builder(
+                      itemCount: items.length,
+                      itemBuilder: (context, index) {
+                        final track = items[index];
+                        return desktop
+                            ? TrackRow(
+                                index: index + 1,
+                                track: track,
+                                onTap: () => controller.play(track),
+                              )
+                            : MobileTrackTile(
+                                track: track,
+                                onTap: () => controller.play(track),
                               );
-                              if (item.type == LibraryItemType.track) {
-                                await controller.play(item);
-                                return;
-                              }
-                              final children = await ref.read(
-                                childrenProvider(item.id).future,
-                              );
-                              final tracks = children
-                                  .where(
-                                    (child) =>
-                                        child.type == LibraryItemType.track,
-                                  )
-                                  .toList(growable: false);
-                              if (tracks.isNotEmpty) {
-                                await controller.playQueue(tracks);
-                              }
-                            },
-                            onTap: () => item.type == LibraryItemType.track
-                                ? ref
-                                      .read(appControllerProvider.notifier)
-                                      .play(item)
-                                : context.push('/item/${item.id}'),
-                          );
-                        },
-                      );
-                    },
+                      },
+                    ),
                   ),
-                ),
+                ] else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 48),
+                    sliver: SliverArtworkGrid(items: items),
+                  ),
               ],
             ),
     );

@@ -316,7 +316,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ],
               ),
               _Section(
-                title: 'Integrations',
+                title: 'Device support',
                 children: [
                   _CapabilityTile(
                     title: 'Google Cast',
@@ -364,7 +364,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       applicationName: 'JamHorse',
                       applicationVersion: _version,
                       applicationLegalese:
-                          'Copyright © 2026 JamHorse contributors\nGPLv3',
+                          'Copyright © 2026 Aspenini\nGPLv3',
                     ),
                   ),
                   ListTile(

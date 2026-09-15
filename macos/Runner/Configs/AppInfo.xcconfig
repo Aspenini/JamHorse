@@ -11,4 +11,4 @@ PRODUCT_NAME = JamHorse
 PRODUCT_BUNDLE_IDENTIFIER = com.aspenini.jamhorse
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 JamHorse contributors. GPLv3.
+PRODUCT_COPYRIGHT = Copyright © 2026 Aspenini. GPLv3.

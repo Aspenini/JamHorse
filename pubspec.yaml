@@ -49,12 +49,20 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icons-output/web/icon-512.png
+    - assets/fonts/OFL.txt
     - LICENSE
     - THIRD_PARTY_NOTICES.md
+  fonts:
+    # Variable font: FontWeight values drive the wght axis directly.
+    - family: Figtree
+      fonts:
+        - asset: assets/fonts/Figtree-VariableFont_wght.ttf
+        - asset: assets/fonts/Figtree-Italic-VariableFont_wght.ttf
+          style: italic
 
 msix_config:
   display_name: JamHorse
-  publisher_display_name: JamHorse contributors
+  publisher_display_name: Aspenini
   identity_name: com.aspenini.jamhorse
   publisher: CN=JamHorse
   logo_path: assets/icons-output/web/icon-512.png

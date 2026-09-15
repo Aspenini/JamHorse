@@ -1,44 +1,8 @@
 import 'package:jamhorse/domain/models.dart';
 
-abstract interface class JellyfinGateway {
-  Future<ServerInfo> inspectServer(Uri baseUrl);
-
-  Future<AuthSession> authenticate({
-    required Uri baseUrl,
-    required String username,
-    required String password,
-    required String deviceId,
-    required bool allowPrivateHttp,
-  });
-
-  Future<LibraryPage> fetchLibraryPage(
-    AuthSession session, {
-    Set<LibraryItemType> types = const {},
-    int limit = 200,
-    String? parentId,
-    String? searchTerm,
-    String? sortBy,
-    String? sortOrder,
-    int startIndex = 0,
-    OperationContext? context,
-  });
-
-  Future<List<LibraryItem>> fetchRecentlyPlayed(AuthSession session);
-
-  Future<List<LibraryItem>> fetchFavorites(AuthSession session);
-
-  Future<List<LyricsLine>> fetchLyrics(AuthSession session, String itemId);
-
-  Future<void> setFavorite(AuthSession session, String itemId, bool favorite);
-
-  Uri imageUri(AuthSession session, String itemId, {int width = 600});
-
-  Uri userImageUri(AuthSession session, {int width = 128});
-
-  Uri streamUri(AuthSession session, LibraryItem item, {int? maxBitrate});
-
-  Map<String, String> playbackHeaders(AuthSession session);
-
+/// Jellyfin's playback session reporting, split out so it can be buffered
+/// for offline stretches without wrapping the whole gateway.
+abstract interface class PlaybackReporter {
   Future<void> reportPlaybackStarted(
     AuthSession session,
     LibraryItem item, {
@@ -59,6 +23,60 @@ abstract interface class JellyfinGateway {
     Duration position, {
     String? playSessionId,
   });
+}
+
+abstract interface class JellyfinGateway implements PlaybackReporter {
+  Future<AuthSession> authenticate({
+    required Uri baseUrl,
+    required String username,
+    required String password,
+    required String deviceId,
+    required bool allowPrivateHttp,
+  });
+
+  /// One page of items. [parentId] scopes to an album or playlist;
+  /// [artistId] and [genreId] filter by credit and genre, which Jellyfin
+  /// does not model as parents. A null [sortBy] keeps the server's natural
+  /// order (playlist order for playlists).
+  Future<LibraryPage> fetchLibraryPage(
+    AuthSession session, {
+    Set<LibraryItemType> types = const {},
+    int limit = 200,
+    String? parentId,
+    String? artistId,
+    String? genreId,
+    String? searchTerm,
+    String? sortBy,
+    String? sortOrder,
+    int startIndex = 0,
+    OperationContext? context,
+  });
+
+  Future<List<LibraryItem>> fetchRecentlyPlayed(AuthSession session);
+
+  Future<List<LyricsLine>> fetchLyrics(AuthSession session, String itemId);
+
+  Future<void> setFavorite(AuthSession session, String itemId, bool favorite);
+
+  Future<LibraryItem> createPlaylist(AuthSession session, String name);
+
+  Future<void> addToPlaylist(
+    AuthSession session,
+    String playlistId,
+    List<String> itemIds,
+  );
+
+  Uri imageUri(AuthSession session, String itemId, {int width = 600});
+
+  Uri userImageUri(AuthSession session, {int width = 128});
+
+  /// Negotiated (possibly transcoded) stream for playback.
+  Uri streamUri(AuthSession session, LibraryItem item, {int? maxBitrate});
+
+  /// The original file, byte for byte, for offline downloads.
+  Uri downloadUri(AuthSession session, LibraryItem item);
+
+  Map<String, String> playbackHeaders(AuthSession session);
 }
 
 abstract interface class CredentialStore {
@@ -82,16 +100,34 @@ abstract interface class LibraryRepository {
   });
 
   Future<List<LibraryItem>> search(AuthSession session, String query);
+
+  /// Updates one cached item's favorite flag without rewriting the cache.
+  Future<void> setFavorite(String profileId, String itemId, bool favorite);
+
+  Future<void> upsertItem(LibraryItem item);
+
+  /// Playable tracks for any item, in the order Spotify would queue them.
+  Future<List<LibraryItem>> tracksFor(AuthSession session, LibraryItem item);
+
+  /// What a detail page lists: tracks for albums and playlists, albums for
+  /// artists and genres.
+  Future<List<LibraryItem>> childrenFor(AuthSession session, LibraryItem item);
 }
 
-abstract interface class PlaybackEngine {
+abstract interface class PlaybackCoordinator {
   Stream<PlaybackSnapshot> get snapshots;
 
+  PlaybackSnapshot get currentSnapshot;
+
+  int? get audioSessionId;
+
+  /// Replaces the queue. A null [shuffle] keeps the current shuffle mode.
   Future<void> load(
     AuthSession session,
     List<LibraryItem> queue, {
     int initialIndex = 0,
     bool autoPlay = true,
+    bool? shuffle,
   });
 
   Future<void> play();
@@ -110,6 +146,13 @@ abstract interface class PlaybackEngine {
 
   Future<void> removeQueueItemAt(int index);
 
+  /// Inserts [items] to play immediately after the current track.
+  Future<void> playNext(List<LibraryItem> items);
+
+  /// Appends [items] after anything already queued with [playNext] or
+  /// [addToQueue], ahead of the rest of the playing context.
+  Future<void> addToQueue(List<LibraryItem> items);
+
   Future<void> setShuffle(bool enabled);
 
   Future<void> setRepeat(RepeatMode mode);
@@ -121,15 +164,17 @@ abstract interface class PlaybackEngine {
   Future<void> updateItemMetadata(LibraryItem item);
 
   Future<void> stop();
-}
 
-abstract interface class PlaybackCoordinator implements PlaybackEngine {
-  PlaybackSnapshot get currentSnapshot;
-  int? get audioSessionId;
+  /// Stops playback and forgets the queue, e.g. when the account changes.
+  Future<void> reset();
 
   Future<void> restore(AuthSession session, List<LibraryItem> library);
 
   Future<void> setBrowseLibrary(AuthSession session, List<LibraryItem> library);
+
+  /// Writes queue and position to disk now, e.g. before the app is
+  /// backgrounded or closed.
+  Future<void> persistNow();
 }
 
 abstract interface class DownloadManager {
@@ -155,8 +200,8 @@ abstract interface class DownloadManager {
 
   Future<void> enforceStorageLimit();
 
-  Future<void> markPlayed(String profileId, String itemId);
-
+  /// Picks up transfers that finished or failed while the app was not
+  /// running.
   Future<void> reconcile();
 }
 
@@ -203,6 +248,8 @@ extension JellyfinGatewayPagination on JellyfinGateway {
     Set<LibraryItemType> types = const {},
     int limit = 200,
     String? parentId,
+    String? artistId,
+    String? genreId,
     String? searchTerm,
     String? sortBy,
     String? sortOrder,
@@ -219,6 +266,8 @@ extension JellyfinGatewayPagination on JellyfinGateway {
         limit: remaining < 500 ? remaining : 500,
         startIndex: startIndex,
         parentId: parentId,
+        artistId: artistId,
+        genreId: genreId,
         searchTerm: searchTerm,
         sortBy: sortBy,
         sortOrder: sortOrder,

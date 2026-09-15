@@ -10,8 +10,8 @@ import 'package:jamhorse/core/artwork_cache.dart';
 import 'package:jamhorse/core/logging.dart';
 import 'package:jamhorse/data/database.dart';
 import 'package:jamhorse/data/jellyfin_gateway.dart';
-import 'package:jamhorse/data/pre_release_reset.dart';
 import 'package:jamhorse/data/report_buffer.dart';
+import 'package:jamhorse/data/repositories.dart';
 import 'package:jamhorse/domain/models.dart';
 import 'package:jamhorse/platform/discord_presence.dart';
 import 'package:jamhorse/platform/window_decorations.dart';
@@ -24,7 +24,6 @@ import 'package:window_manager/window_manager.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureLogging();
-  await PreReleaseReset.runIfNeeded();
   final windowDecorationMode = await loadWindowDecorationMode();
   seedWindowDecorationMode(windowDecorationMode);
   seedDiscordPresenceEnabled(await loadDiscordPresenceEnabled());
@@ -66,18 +65,22 @@ Future<void> main() async {
     yield LicenseEntryWithLineBreaks(const [
       'JamHorse third-party dependencies',
     ], await rootBundle.loadString('THIRD_PARTY_NOTICES.md'));
+    yield LicenseEntryWithLineBreaks(const [
+      'Figtree',
+    ], await rootBundle.loadString('assets/fonts/OFL.txt'));
   });
-  // Playback reports survive offline stretches via the buffering wrapper.
-  final gateway = ReportBufferingGateway(
-    DioJellyfinGateway(appVersion: packageInfo.version),
-    database,
-  );
+  final gateway = DioJellyfinGateway(appVersion: packageInfo.version);
+  final library = DriftLibraryRepository(database, gateway);
+  // Playback reports survive offline stretches via the buffering reporter.
+  final reporter = BufferedPlaybackReporter(gateway, database);
 
-  // Plays a downloaded copy instead of streaming when one exists on disk.
-  Future<String?> localSource(LibraryItem item) async {
-    final path = await database.completedDownloadPath(item.profileId, item.id);
-    if (path == null || !File(path).existsSync()) return null;
-    return path;
+  // Downloaded copies play instead of streaming when the file still exists.
+  Future<Map<String, String>> localSources(String profileId) async {
+    final paths = await database.completedDownloadPaths(profileId);
+    return {
+      for (final MapEntry(key: itemId, value: path) in paths.entries)
+        if (File(path).existsSync()) itemId: path,
+    };
   }
 
   Future<Uri?> localArtwork(AuthSession session, LibraryItem item) async {
@@ -97,6 +100,15 @@ Future<void> main() async {
     return file.uri;
   }
 
+  JamHorseAudioHandler buildHandler() => JamHorseAudioHandler(
+    gateway,
+    reporter: reporter,
+    tracksFor: library.tracksFor,
+    localSourceResolver: localSources,
+    artworkResolver: localArtwork,
+    database: database,
+  );
+
   final JamHorseAudioHandler audioHandler;
   if (Platform.isAndroid ||
       Platform.isIOS ||
@@ -104,12 +116,7 @@ Future<void> main() async {
       Platform.isWindows ||
       Platform.isLinux) {
     audioHandler = await AudioService.init<JamHorseAudioHandler>(
-      builder: () => JamHorseAudioHandler(
-        gateway,
-        localSourceResolver: localSource,
-        artworkResolver: localArtwork,
-        database: database,
-      ),
+      builder: buildHandler,
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.aspenini.jamhorse.playback',
         androidNotificationChannelName: 'Music playback',
@@ -120,12 +127,7 @@ Future<void> main() async {
       ),
     );
   } else {
-    audioHandler = JamHorseAudioHandler(
-      gateway,
-      localSourceResolver: localSource,
-      artworkResolver: localArtwork,
-      database: database,
-    );
+    audioHandler = buildHandler();
   }
   await audioHandler.initialize();
 
@@ -134,6 +136,7 @@ Future<void> main() async {
       overrides: [
         databaseProvider.overrideWithValue(database),
         jellyfinGatewayProvider.overrideWithValue(gateway),
+        libraryRepositoryProvider.overrideWithValue(library),
         playbackCoordinatorProvider.overrideWithValue(audioHandler),
       ],
       child: const JamHorseApp(),

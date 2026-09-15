@@ -12,4 +12,9 @@ linter:
 analyzer:
   exclude:
     - "**/*.g.dart"
-    - "packages/jellyfin_api/**"
+    - build/**
+    - android/**
+    - ios/**
+    - windows/**
+    - macos/**
+    - linux/**

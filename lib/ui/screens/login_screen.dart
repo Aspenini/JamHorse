@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:jamhorse/app/theme.dart';
 import 'package:jamhorse/core/server_uri_policy.dart';
 import 'package:jamhorse/state/providers.dart';
@@ -51,12 +50,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The router's redirect leaves this screen once sign-in succeeds.
     final state = ref.watch(appControllerProvider);
-    ref.listen(appControllerProvider, (previous, next) {
-      if (previous?.isAuthenticated == false && next.isAuthenticated) {
-        context.go('/home');
-      }
-    });
     return Scaffold(
       body: DecoratedBox(
         decoration: const BoxDecoration(

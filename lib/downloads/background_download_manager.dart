@@ -65,7 +65,6 @@ class JamHorseDownloadManager implements DownloadManager {
         filePath: row.filePath,
         progress: status == DownloadStatus.complete ? 1 : row.progress,
         sizeBytes: row.sizeBytes,
-        checksum: row.checksum,
         lastPlayedAt: row.lastPlayedAt,
       );
     }
@@ -113,7 +112,7 @@ class JamHorseDownloadManager implements DownloadManager {
     final extension = _safeExtension(item.container);
     final task = bg.DownloadTask(
       taskId: id,
-      url: _gateway.streamUri(session, item).toString(),
+      url: _gateway.downloadUri(session, item).toString(),
       headers: _gateway.playbackHeaders(session),
       filename: '${item.id}.$extension',
       directory: 'downloads/${session.profile.profileId}',
@@ -222,21 +221,6 @@ class JamHorseDownloadManager implements DownloadManager {
     }
   }
 
-  @override
-  Future<void> markPlayed(String profileId, String itemId) async {
-    await _database.markDownloadPlayed(profileId, itemId);
-    final match = _records.values.firstWhereOrNull(
-      (record) =>
-          record.profileId == profileId &&
-          record.itemId == itemId &&
-          record.status == DownloadStatus.complete,
-    );
-    if (match != null) {
-      _records[match.id] = match.copyWith(lastPlayedAt: DateTime.now());
-      _emit();
-    }
-  }
-
   Future<void> _handleUpdate(bg.TaskUpdate update) async {
     final record = _records[update.task.taskId];
     if (record == null) return;
@@ -321,7 +305,6 @@ class JamHorseDownloadManager implements DownloadManager {
         filePath: Value(record.filePath),
         progress: Value(record.progress),
         sizeBytes: Value(record.sizeBytes),
-        checksum: Value(record.checksum),
         lastPlayedAt: Value(record.lastPlayedAt),
         updatedAt: DateTime.now(),
       ),
@@ -354,7 +337,6 @@ extension on DownloadRecord {
     String? filePath,
     double? progress,
     int? sizeBytes,
-    DateTime? lastPlayedAt,
   }) {
     return DownloadRecord(
       id: id,
@@ -364,8 +346,7 @@ extension on DownloadRecord {
       filePath: filePath ?? this.filePath,
       progress: progress ?? this.progress,
       sizeBytes: sizeBytes ?? this.sizeBytes,
-      checksum: checksum,
-      lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
+      lastPlayedAt: lastPlayedAt,
     );
   }
 }

@@ -2,7 +2,8 @@
 
 1. Update `version` in `pubspec.yaml`.
 2. Run analysis, tests, and all available platform builds.
-3. Build artifacts with the scripts in `tool/package/`.
+3. Build artifacts with `just package <windows|macos|linux>` (the scripts in
+   `tool/package/`) and `just build apk` / `just build appbundle`.
 4. Sign artifacts only through environment-provided credentials.
 5. Include `LICENSE` and `THIRD_PARTY_NOTICES.md` with every desktop package.
 

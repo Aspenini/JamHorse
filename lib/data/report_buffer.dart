@@ -5,13 +5,13 @@ import 'package:jamhorse/data/database.dart';
 import 'package:jamhorse/domain/contracts.dart';
 import 'package:jamhorse/domain/models.dart';
 
-/// Wraps a [JellyfinGateway] so playback reports survive being offline:
+/// Wraps a [PlaybackReporter] so playback reports survive being offline:
 /// failed reports are queued in the database and flushed, oldest first,
 /// the next time a report goes through.
-class ReportBufferingGateway implements JellyfinGateway {
-  ReportBufferingGateway(this._inner, this._database);
+class BufferedPlaybackReporter implements PlaybackReporter {
+  BufferedPlaybackReporter(this._inner, this._database);
 
-  final JellyfinGateway _inner;
+  final PlaybackReporter _inner;
   final AppDatabase _database;
   Future<void> _serial = Future.value();
 
@@ -186,84 +186,4 @@ class ReportBufferingGateway implements JellyfinGateway {
       ),
     };
   }
-
-  // Everything else passes straight through.
-
-  @override
-  Future<AuthSession> authenticate({
-    required Uri baseUrl,
-    required String username,
-    required String password,
-    required String deviceId,
-    required bool allowPrivateHttp,
-  }) {
-    return _inner.authenticate(
-      baseUrl: baseUrl,
-      username: username,
-      password: password,
-      deviceId: deviceId,
-      allowPrivateHttp: allowPrivateHttp,
-    );
-  }
-
-  @override
-  Future<ServerInfo> inspectServer(Uri baseUrl) =>
-      _inner.inspectServer(baseUrl);
-
-  @override
-  Future<LibraryPage> fetchLibraryPage(
-    AuthSession session, {
-    Set<LibraryItemType> types = const {},
-    int limit = 200,
-    String? parentId,
-    String? searchTerm,
-    String? sortBy,
-    String? sortOrder,
-    int startIndex = 0,
-    OperationContext? context,
-  }) {
-    return _inner.fetchLibraryPage(
-      session,
-      types: types,
-      limit: limit,
-      parentId: parentId,
-      searchTerm: searchTerm,
-      sortBy: sortBy,
-      sortOrder: sortOrder,
-      startIndex: startIndex,
-      context: context,
-    );
-  }
-
-  @override
-  Future<List<LibraryItem>> fetchFavorites(AuthSession session) =>
-      _inner.fetchFavorites(session);
-
-  @override
-  Future<List<LibraryItem>> fetchRecentlyPlayed(AuthSession session) =>
-      _inner.fetchRecentlyPlayed(session);
-
-  @override
-  Future<List<LyricsLine>> fetchLyrics(AuthSession session, String itemId) =>
-      _inner.fetchLyrics(session, itemId);
-
-  @override
-  Future<void> setFavorite(AuthSession session, String itemId, bool favorite) =>
-      _inner.setFavorite(session, itemId, favorite);
-
-  @override
-  Uri imageUri(AuthSession session, String itemId, {int width = 600}) =>
-      _inner.imageUri(session, itemId, width: width);
-
-  @override
-  Uri userImageUri(AuthSession session, {int width = 128}) =>
-      _inner.userImageUri(session, width: width);
-
-  @override
-  Uri streamUri(AuthSession session, LibraryItem item, {int? maxBitrate}) =>
-      _inner.streamUri(session, item, maxBitrate: maxBitrate);
-
-  @override
-  Map<String, String> playbackHeaders(AuthSession session) =>
-      _inner.playbackHeaders(session);
 }

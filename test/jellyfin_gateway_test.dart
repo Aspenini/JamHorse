@@ -26,38 +26,29 @@ void main() {
   test(
     'paged library requests carry bounds and map profile metadata',
     () async {
-      late RequestOptions request;
-      final dio = Dio()
-        ..interceptors.add(
-          InterceptorsWrapper(
-            onRequest: (options, handler) {
-              request = options;
-              handler.resolve(
-                Response<Map<String, dynamic>>(
-                  requestOptions: options,
-                  statusCode: 200,
-                  data: {
-                    'StartIndex': 25,
-                    'TotalRecordCount': 101,
-                    'Items': [
-                      {
-                        'Id': 'track',
-                        'Type': 'Audio',
-                        'Name': 'Song',
-                        'Album': 'Record',
-                        'AlbumId': 'album',
-                        'Artists': ['One', 'Two'],
-                        'ParentIndexNumber': 2,
-                        'ImageTags': {'Primary': 'hash'},
-                      },
-                    ],
-                  },
-                ),
-              );
-            },
-          ),
-        );
-      final gateway = DioJellyfinGateway(dio: dio, appVersion: 'test');
+      final requests = <RequestOptions>[];
+      final gateway = DioJellyfinGateway(
+        dio: _recordingDio(
+          requests,
+          respond: (_) => {
+            'StartIndex': 25,
+            'TotalRecordCount': 101,
+            'Items': [
+              {
+                'Id': 'track',
+                'Type': 'Audio',
+                'Name': 'Song',
+                'Album': 'Record',
+                'AlbumId': 'album',
+                'Artists': ['One', 'Two'],
+                'ParentIndexNumber': 2,
+                'ImageTags': {'Primary': 'hash'},
+              },
+            ],
+          },
+        ),
+        appVersion: 'test',
+      );
 
       final page = await gateway.fetchLibraryPage(
         _session(),
@@ -71,6 +62,7 @@ void main() {
         ),
       );
 
+      final request = requests.single;
       expect(request.queryParameters['Limit'], 50);
       expect(request.queryParameters['StartIndex'], 25);
       expect(request.queryParameters['IncludeItemTypes'], 'Audio');
@@ -92,32 +84,82 @@ void main() {
         },
       );
       expect(
-        request.queryParameters['IncludeItemTypes'],
+        requests.last.queryParameters['IncludeItemTypes'],
         'Playlist,MusicGenre,Folder',
       );
     },
   );
 
-  test('stream URLs never contain credentials', () {
-    final gateway = DioJellyfinGateway(appVersion: 'test');
-    final session = _session();
-    final item = LibraryItem(
-      id: 'track',
-      profileId: 'profile',
-      serverId: 'server',
-      type: LibraryItemType.track,
-      name: 'Song',
+  test('artists and genres filter by credit rather than parent', () async {
+    final requests = <RequestOptions>[];
+    final gateway = DioJellyfinGateway(
+      dio: _recordingDio(requests),
+      appVersion: 'test',
     );
 
-    final uri = gateway.streamUri(session, item);
+    await gateway.fetchLibraryPage(
+      _session(),
+      artistId: 'artist',
+      sortBy: 'SortName',
+    );
+    await gateway.fetchLibraryPage(_session(), genreId: 'genre');
+
+    final artist = requests.first.queryParameters;
+    expect(artist['ArtistIds'], 'artist');
+    expect(artist, isNot(contains('ParentId')));
+    expect(artist['SortBy'], 'SortName');
+    expect(artist['SortOrder'], 'Ascending');
+    expect(artist['EnableImageTypes'], 'Primary');
+    final genre = requests.last.queryParameters;
+    expect(genre['GenreIds'], 'genre');
+    // No sort keeps the server's natural (playlist) order.
+    expect(genre, isNot(contains('SortBy')));
+    expect(genre, isNot(contains('SortOrder')));
+  });
+
+  test('albums credit their album artist and keep the date added', () async {
+    final gateway = DioJellyfinGateway(
+      dio: _recordingDio(
+        [],
+        respond: (_) => {
+          'Items': [
+            {
+              'Id': 'album',
+              'Type': 'MusicAlbum',
+              'Name': 'Record',
+              'AlbumArtists': [
+                {'Id': 'artist', 'Name': 'Band'},
+              ],
+              'DateCreated': '2024-05-01T10:00:00.0000000Z',
+            },
+          ],
+        },
+      ),
+      appVersion: 'test',
+    );
+
+    final album = (await gateway.fetchLibraryPage(_session())).items.single;
+
+    expect(album.artistId, 'artist');
+    expect(album.dateCreated, DateTime.utc(2024, 5, 1, 10));
+  });
+
+  test('stream and download URLs never contain credentials', () {
+    final gateway = DioJellyfinGateway(appVersion: 'test');
+    final session = _session();
+
+    final stream = gateway.streamUri(session, _track());
+    final download = gateway.downloadUri(session, _track());
     final userImage = gateway.userImageUri(session);
 
-    expect(uri.queryParameters, isNot(contains('api_key')));
-    expect(uri.queryParameters.values, isNot(contains('secret')));
-    expect(uri.userInfo, isEmpty);
+    for (final uri in [stream, download, userImage]) {
+      expect(uri.queryParameters, isNot(contains('api_key')));
+      expect(uri.queryParameters.values, isNot(contains('secret')));
+      expect(uri.userInfo, isEmpty);
+    }
+    expect(download.path, '/Audio/track/stream');
+    expect(download.queryParameters['static'], 'true');
     expect(userImage.path, '/Users/user/Images/Primary');
-    expect(userImage.queryParameters, isNot(contains('api_key')));
-    expect(userImage.userInfo, isEmpty);
     expect(
       gateway.playbackHeaders(session)['Authorization'],
       contains('secret'),
@@ -130,65 +172,48 @@ void main() {
       profile: _session().profile.copyWithPrivateHttp(false),
       token: 'secret',
     );
-    final item = LibraryItem(
-      id: 'track',
-      profileId: 'profile',
-      serverId: 'server',
-      type: LibraryItemType.track,
-      name: 'Song',
-    );
 
-    expect(() => gateway.streamUri(blocked, item), throwsFormatException);
+    expect(() => gateway.streamUri(blocked, _track()), throwsFormatException);
   });
 
   test(
     'authentication and focused gateway endpoints use typed responses',
     () async {
       final requests = <RequestOptions>[];
-      final dio = Dio()
-        ..interceptors.add(
-          InterceptorsWrapper(
-            onRequest: (options, handler) {
-              requests.add(options);
-              final data = switch (options.path) {
-                final path when path.endsWith('/System/Info/Public') => {
-                  'Id': 'server',
-                  'ServerName': 'Music',
-                  'Version': '10.10.1',
-                },
-                final path when path.endsWith('/Users/AuthenticateByName') => {
-                  'AccessToken': 'secret',
-                  'User': {'Id': 'user', 'Name': 'listener'},
-                },
-                final path when path.endsWith('/Audio/track/Lyrics') => {
-                  'Lyrics': [
-                    {'Text': 'First', 'Start': 10000000},
-                    {'Text': ''},
-                  ],
-                },
-                final path when path.endsWith('/Items') => {
-                  'Items': [
-                    {
-                      'Id': 'track',
-                      'Type': 'Audio',
-                      'Name': 'Song',
-                      'UserData': {'IsFavorite': true},
-                    },
-                  ],
-                },
-                _ => <String, dynamic>{},
-              };
-              handler.resolve(
-                Response<Map<String, dynamic>>(
-                  requestOptions: options,
-                  statusCode: 200,
-                  data: data,
-                ),
-              );
+      final gateway = DioJellyfinGateway(
+        dio: _recordingDio(
+          requests,
+          respond: (options) => switch (options.path) {
+            final path when path.endsWith('/System/Info/Public') => {
+              'Id': 'server',
+              'ServerName': 'Music',
+              'Version': '10.10.1',
             },
-          ),
-        );
-      final gateway = DioJellyfinGateway(dio: dio, appVersion: '0.9.0');
+            final path when path.endsWith('/Users/AuthenticateByName') => {
+              'AccessToken': 'secret',
+              'User': {'Id': 'user', 'Name': 'listener'},
+            },
+            final path when path.endsWith('/Audio/track/Lyrics') => {
+              'Lyrics': [
+                {'Text': 'First', 'Start': 10000000},
+                {'Text': ''},
+              ],
+            },
+            final path when path.endsWith('/Items') => {
+              'Items': [
+                {
+                  'Id': 'track',
+                  'Type': 'Audio',
+                  'Name': 'Song',
+                  'UserData': {'IsFavorite': true},
+                },
+              ],
+            },
+            _ => <String, dynamic>{},
+          },
+        ),
+        appVersion: '0.9.0',
+      );
 
       final session = await gateway.authenticate(
         baseUrl: Uri.parse('https://music.example.com'),
@@ -198,14 +223,13 @@ void main() {
         allowPrivateHttp: false,
       );
       final recent = await gateway.fetchRecentlyPlayed(session);
-      final favorites = await gateway.fetchFavorites(session);
       final lyrics = await gateway.fetchLyrics(session, 'track');
 
       expect(session.profile.serverId, 'server');
       expect(session.profile.profileId, isNotEmpty);
       expect(session.token, 'secret');
       expect(recent.single.name, 'Song');
-      expect(favorites.single.isFavorite, isTrue);
+      expect(recent.single.isFavorite, isTrue);
       expect(lyrics.single.text, 'First');
       expect(lyrics.single.start, const Duration(seconds: 1));
       expect(
@@ -219,30 +243,46 @@ void main() {
     },
   );
 
+  test('playlists are created empty and filled in chunks', () async {
+    final requests = <RequestOptions>[];
+    final gateway = DioJellyfinGateway(
+      dio: _recordingDio(requests, respond: (_) => {'Id': 'new-playlist'}),
+      appVersion: 'test',
+    );
+
+    final playlist = await gateway.createPlaylist(_session(), 'Road trip');
+    await gateway.addToPlaylist(_session(), playlist.id, [
+      for (var i = 0; i < 150; i++) 'track-$i',
+    ]);
+
+    expect(playlist.id, 'new-playlist');
+    expect(playlist.type, LibraryItemType.playlist);
+    expect(playlist.profileId, 'profile');
+    expect(requests.first.path, endsWith('/Playlists'));
+    expect(requests.first.data, containsPair('Name', 'Road trip'));
+    final adds = requests.skip(1).toList();
+    expect(adds, hasLength(2));
+    expect(adds.first.path, endsWith('/Playlists/new-playlist/Items'));
+    expect(
+      (adds.first.queryParameters['Ids'] as String).split(','),
+      hasLength(100),
+    );
+    expect(
+      (adds.last.queryParameters['Ids'] as String).split(','),
+      hasLength(50),
+    );
+  });
+
   test(
     'favorites and playback reports use headers and explicit sessions',
     () async {
       final requests = <RequestOptions>[];
-      final dio = Dio()
-        ..interceptors.add(
-          InterceptorsWrapper(
-            onRequest: (options, handler) {
-              requests.add(options);
-              handler.resolve(
-                Response<void>(requestOptions: options, statusCode: 204),
-              );
-            },
-          ),
-        );
-      final gateway = DioJellyfinGateway(dio: dio, appVersion: 'test');
-      final session = _session();
-      final item = LibraryItem(
-        id: 'track',
-        profileId: 'profile',
-        serverId: 'server',
-        type: LibraryItemType.track,
-        name: 'Song',
+      final gateway = DioJellyfinGateway(
+        dio: _recordingDio(requests),
+        appVersion: 'test',
       );
+      final session = _session();
+      final item = _track();
 
       await gateway.setFavorite(session, item.id, true);
       await gateway.setFavorite(session, item.id, false);
@@ -286,43 +326,58 @@ void main() {
     },
   );
 
-  test('inspect rejects non-Jellyfin and unsupported servers', () async {
+  test('sign-in rejects non-Jellyfin and unsupported servers', () async {
     for (final data in [
       <String, dynamic>{},
       {'Id': 'server', 'Version': '10.9.0'},
     ]) {
-      final dio = Dio()
-        ..interceptors.add(
-          InterceptorsWrapper(
-            onRequest: (options, handler) => handler.resolve(
-              Response<Map<String, dynamic>>(
-                requestOptions: options,
-                statusCode: 200,
-                data: data,
-              ),
-            ),
-          ),
-        );
-      final gateway = DioJellyfinGateway(dio: dio);
-      if (data.isEmpty) {
-        expect(
-          () => gateway.inspectServer(Uri.parse('https://example.com')),
-          throwsStateError,
-        );
-      } else {
-        expect(
-          () => gateway.authenticate(
-            baseUrl: Uri.parse('https://example.com'),
-            username: 'u',
-            password: 'p',
-            deviceId: 'd',
-            allowPrivateHttp: false,
-          ),
-          throwsStateError,
-        );
-      }
+      final gateway = DioJellyfinGateway(
+        dio: _recordingDio([], respond: (_) => data),
+      );
+      await expectLater(
+        gateway.authenticate(
+          baseUrl: Uri.parse('https://example.com'),
+          username: 'u',
+          password: 'p',
+          deviceId: 'd',
+          allowPrivateHttp: false,
+        ),
+        throwsStateError,
+      );
     }
   });
+}
+
+/// A Dio whose requests are captured in [requests] and answered locally.
+Dio _recordingDio(
+  List<RequestOptions> requests, {
+  Object? Function(RequestOptions options)? respond,
+}) {
+  return Dio()
+    ..interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          requests.add(options);
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: 200,
+              data: respond?.call(options) ?? const {'Items': <Object>[]},
+            ),
+          );
+        },
+      ),
+    );
+}
+
+LibraryItem _track() {
+  return const LibraryItem(
+    id: 'track',
+    profileId: 'profile',
+    serverId: 'server',
+    type: LibraryItemType.track,
+    name: 'Song',
+  );
 }
 
 AuthSession _session() {

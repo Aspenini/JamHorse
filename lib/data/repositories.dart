@@ -75,36 +75,24 @@ class DriftLibraryRepository implements LibraryRepository {
   final db.AppDatabase _database;
   final JellyfinGateway _gateway;
 
+  static const _albumOrder = 'ParentIndexNumber,IndexNumber,SortName';
+
   @override
   Future<void> cacheLibrary(String profileId, List<LibraryItem> items) {
     return _database.replaceLibrary(
       profileId,
-      items
-          .map(
-            (item) => db.CachedItemsCompanion.insert(
-              profileId: profileId,
-              serverId: item.serverId,
-              itemId: item.id,
-              itemType: item.type.name,
-              name: item.name,
-              subtitle: Value(item.subtitle),
-              albumId: Value(item.albumId),
-              albumName: Value(item.albumName),
-              artistId: Value(item.artistId),
-              artistsJson: Value(jsonEncode(item.artists)),
-              imageUrl: Value(item.imageUrl?.toString()),
-              durationMs: Value(item.duration.inMilliseconds),
-              indexNumber: Value(item.indexNumber),
-              discNumber: Value(item.discNumber),
-              productionYear: Value(item.productionYear),
-              isFavorite: Value(item.isFavorite),
-              hasPrimaryImage: Value(item.hasPrimaryImage),
-              container: Value(item.container),
-              updatedAt: DateTime.now(),
-            ),
-          )
-          .toList(growable: false),
+      items.map(_companion).toList(growable: false),
     );
+  }
+
+  @override
+  Future<void> upsertItem(LibraryItem item) {
+    return _database.upsertCachedItem(_companion(item));
+  }
+
+  @override
+  Future<void> setFavorite(String profileId, String itemId, bool favorite) {
+    return _database.setCachedFavorite(profileId, itemId, favorite);
   }
 
   @override
@@ -136,6 +124,7 @@ class DriftLibraryRepository implements LibraryRepository {
             isFavorite: row.isFavorite,
             hasPrimaryImage: row.hasPrimaryImage,
             container: row.container,
+            dateCreated: row.dateCreated,
           ),
         )
         .toList(growable: false);
@@ -143,7 +132,12 @@ class DriftLibraryRepository implements LibraryRepository {
 
   @override
   Future<List<LibraryItem>> search(AuthSession session, String query) {
-    return _gateway.fetchLibrary(session, searchTerm: query, limit: 100);
+    return _gateway.fetchLibrary(
+      session,
+      searchTerm: query,
+      sortBy: 'SortName',
+      limit: 100,
+    );
   }
 
   @override
@@ -153,11 +147,99 @@ class DriftLibraryRepository implements LibraryRepository {
   }) async {
     final items = await _gateway.fetchLibrary(
       session,
+      // A stable sort keeps pagination consistent while the server changes.
+      sortBy: 'SortName',
       limit: 0x7fffffff,
       context: context,
     );
     context?.throwIfObsolete();
     await cacheLibrary(session.profile.profileId, items);
     return items;
+  }
+
+  @override
+  Future<List<LibraryItem>> tracksFor(AuthSession session, LibraryItem item) {
+    const tracks = {LibraryItemType.track};
+    return switch (item.type) {
+      LibraryItemType.track => Future.value([item]),
+      LibraryItemType.album => _gateway.fetchLibrary(
+        session,
+        types: tracks,
+        parentId: item.id,
+        sortBy: _albumOrder,
+        limit: 5000,
+      ),
+      // No sort: Jellyfin returns playlist entries in playlist order.
+      LibraryItemType.playlist => _gateway.fetchLibrary(
+        session,
+        types: tracks,
+        parentId: item.id,
+        limit: 5000,
+      ),
+      LibraryItemType.artist => _gateway.fetchLibrary(
+        session,
+        types: tracks,
+        artistId: item.id,
+        sortBy: 'ProductionYear,Album,$_albumOrder',
+        limit: 2000,
+      ),
+      LibraryItemType.genre => _gateway.fetchLibrary(
+        session,
+        types: tracks,
+        genreId: item.id,
+        sortBy: 'Random',
+        limit: 500,
+      ),
+      LibraryItemType.folder ||
+      LibraryItemType.unknown => Future.value(const []),
+    };
+  }
+
+  @override
+  Future<List<LibraryItem>> childrenFor(AuthSession session, LibraryItem item) {
+    const albums = {LibraryItemType.album};
+    return switch (item.type) {
+      LibraryItemType.artist => _gateway.fetchLibrary(
+        session,
+        types: albums,
+        artistId: item.id,
+        sortBy: 'ProductionYear,SortName',
+        sortOrder: 'Descending,Ascending',
+        limit: 500,
+      ),
+      LibraryItemType.genre => _gateway.fetchLibrary(
+        session,
+        types: albums,
+        genreId: item.id,
+        sortBy: 'SortName',
+        limit: 500,
+      ),
+      _ => tracksFor(session, item),
+    };
+  }
+
+  db.CachedItemsCompanion _companion(LibraryItem item) {
+    return db.CachedItemsCompanion.insert(
+      profileId: item.profileId,
+      serverId: item.serverId,
+      itemId: item.id,
+      itemType: item.type.name,
+      name: item.name,
+      subtitle: Value(item.subtitle),
+      albumId: Value(item.albumId),
+      albumName: Value(item.albumName),
+      artistId: Value(item.artistId),
+      artistsJson: Value(jsonEncode(item.artists)),
+      imageUrl: Value(item.imageUrl?.toString()),
+      durationMs: Value(item.duration.inMilliseconds),
+      indexNumber: Value(item.indexNumber),
+      discNumber: Value(item.discNumber),
+      productionYear: Value(item.productionYear),
+      isFavorite: Value(item.isFavorite),
+      hasPrimaryImage: Value(item.hasPrimaryImage),
+      container: Value(item.container),
+      dateCreated: Value(item.dateCreated),
+      updatedAt: DateTime.now(),
+    );
   }
 }

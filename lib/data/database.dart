@@ -42,12 +42,17 @@ class CachedItems extends Table {
   BoolColumn get hasPrimaryImage =>
       boolean().withDefault(const Constant(false))();
   TextColumn get container => text().nullable()();
+  DateTimeColumn get dateCreated => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
 
   @override
   Set<Column<Object>> get primaryKey => {profileId, itemId};
 }
 
+@TableIndex(
+  name: 'download_entries_profile_item',
+  columns: {#profileId, #itemId},
+)
 class DownloadEntries extends Table {
   TextColumn get id => text()();
   TextColumn get profileId => text()();
@@ -56,7 +61,6 @@ class DownloadEntries extends Table {
   TextColumn get filePath => text().nullable()();
   RealColumn get progress => real().withDefault(const Constant(0))();
   IntColumn get sizeBytes => integer().withDefault(const Constant(0))();
-  TextColumn get checksum => text().nullable()();
   DateTimeColumn get lastPlayedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -114,15 +118,14 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (migrator, from, to) async {
-      // JamHorse has not shipped a stable release. Version 2 intentionally
-      // resets the pre-release schema so account-scoped identifiers cannot be
-      // confused with remote Jellyfin server ids.
       if (from < 2) {
+        // Version 1 predates account-scoped identifiers and cannot be
+        // migrated; it only ever shipped in internal pre-release builds.
         for (final table in [
           'pending_reports',
           'queue_entries',
@@ -133,6 +136,13 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('DROP TABLE IF EXISTS $table');
         }
         await migrator.createAll();
+        return;
+      }
+      if (from < 3) {
+        await migrator.addColumn(cachedItems, cachedItems.dateCreated);
+        // Rebuilds the table without the never-populated checksum column.
+        await migrator.alterTable(TableMigration(downloadEntries));
+        await migrator.createIndex(downloadEntriesProfileItem);
       }
     },
   );
@@ -189,6 +199,21 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<void> upsertCachedItem(CachedItemsCompanion item) {
+    return into(cachedItems).insertOnConflictUpdate(item);
+  }
+
+  Future<void> setCachedFavorite(
+    String profileId,
+    String itemId,
+    bool favorite,
+  ) {
+    return (update(cachedItems)..where(
+          (row) => row.profileId.equals(profileId) & row.itemId.equals(itemId),
+        ))
+        .write(CachedItemsCompanion(isFavorite: Value(favorite)));
+  }
+
   Future<List<DownloadEntry>> allDownloads() {
     return (select(
       downloadEntries,
@@ -213,18 +238,18 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
-  Future<String?> completedDownloadPath(String profileId, String itemId) async {
-    final row =
-        await (select(downloadEntries)
-              ..where(
-                (row) =>
-                    row.profileId.equals(profileId) &
-                    row.itemId.equals(itemId) &
-                    row.status.equals('complete'),
-              )
-              ..limit(1))
-            .getSingleOrNull();
-    return row?.filePath;
+  /// Local file paths of one profile's finished downloads, keyed by item id,
+  /// so a whole queue resolves with a single query.
+  Future<Map<String, String>> completedDownloadPaths(String profileId) async {
+    final rows =
+        await (select(downloadEntries)..where(
+              (row) =>
+                  row.profileId.equals(profileId) &
+                  row.status.equals('complete') &
+                  row.filePath.isNotNull(),
+            ))
+            .get();
+    return {for (final row in rows) row.itemId: row.filePath!};
   }
 
   Future<void> insertPendingReport(PendingReportsCompanion report) async {
@@ -283,6 +308,11 @@ class AppDatabase extends _$AppDatabase {
       }
       await into(playbackStates).insertOnConflictUpdate(playback);
     });
+  }
+
+  /// Position and modes only; the queue rows are left untouched.
+  Future<void> savePlaybackState(PlaybackStatesCompanion playback) {
+    return into(playbackStates).insertOnConflictUpdate(playback);
   }
 
   Future<List<QueueEntry>> queueFor(String profileId) {

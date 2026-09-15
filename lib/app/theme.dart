@@ -28,7 +28,8 @@ ThemeData buildJamHorseTheme() {
     canvasColor: JamColors.ink,
     useMaterial3: true,
     visualDensity: VisualDensity.compact,
-    fontFamily: 'Segoe UI Variable',
+    // Bundled so every platform renders the same Circular-like face.
+    fontFamily: 'Figtree',
     splashFactory: InkSparkle.splashFactory,
     textTheme: const TextTheme(
       displayLarge: TextStyle(

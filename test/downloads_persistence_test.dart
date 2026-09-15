@@ -25,15 +25,35 @@ void main() {
       ),
     );
 
-    expect((await database.allDownloads()).single.itemId, 'track-1');
-    expect(
-      await database.completedDownloadPath('profile-a', 'track-1'),
-      '/tmp/track-1.flac',
+    await database.upsertDownload(
+      DownloadEntriesCompanion.insert(
+        id: 'dl-2',
+        profileId: 'profile-a',
+        itemId: 'track-2',
+        status: 'downloading',
+        filePath: const Value('/tmp/partial.flac'),
+        updatedAt: DateTime(2026),
+      ),
     );
-    expect(await database.completedDownloadPath('profile-a', 'other'), isNull);
+    await database.upsertDownload(
+      DownloadEntriesCompanion.insert(
+        id: 'dl-3',
+        profileId: 'profile-b',
+        itemId: 'track-3',
+        status: 'complete',
+        filePath: const Value('/tmp/other-profile.flac'),
+        updatedAt: DateTime(2026),
+      ),
+    );
+
+    expect(await database.allDownloads(), hasLength(3));
+    // Only this profile's finished files resolve, in one query.
+    expect(await database.completedDownloadPaths('profile-a'), {
+      'track-1': '/tmp/track-1.flac',
+    });
 
     await database.deleteDownload('dl-1');
-    expect(await database.allDownloads(), isEmpty);
+    expect(await database.completedDownloadPaths('profile-a'), isEmpty);
   });
 
   test('completed downloads list oldest first for eviction', () async {

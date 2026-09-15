@@ -78,14 +78,9 @@ class DioJellyfinGateway implements JellyfinGateway {
     return AuthSession(profile: profile, token: token);
   }
 
-  @override
-  Future<ServerInfo> inspectServer(Uri baseUrl) async {
-    return _inspectServer(baseUrl);
-  }
-
   Future<ServerInfo> _inspectServer(
     Uri baseUrl, {
-    bool allowPrivateHttp = false,
+    required bool allowPrivateHttp,
   }) async {
     final response = await _dio.get<Map<String, dynamic>>(
       _url(baseUrl, '/System/Info/Public', allowPrivateHttp: allowPrivateHttp),
@@ -108,6 +103,8 @@ class DioJellyfinGateway implements JellyfinGateway {
     Set<LibraryItemType> types = const {},
     int limit = 200,
     String? parentId,
+    String? artistId,
+    String? genreId,
     String? searchTerm,
     String? sortBy,
     String? sortOrder,
@@ -137,50 +134,31 @@ class DioJellyfinGateway implements JellyfinGateway {
         'IncludeItemTypes': includeTypes,
         'Fields': 'Album,AlbumId,ArtistItems,ParentIndexNumber,DateCreated',
         'EnableImages': true,
+        // Only the primary image tag is used; skipping the rest trims large
+        // library responses considerably.
+        'EnableImageTypes': 'Primary',
+        'ImageTypeLimit': 1,
         'EnableUserData': true,
         'Limit': safeLimit,
         'StartIndex': safeStartIndex,
         'EnableTotalRecordCount': true,
         'ParentId': parentId,
+        'ArtistIds': artistId,
+        'GenreIds': genreId,
         'SearchTerm': searchTerm,
-        'SortBy': sortBy ?? 'SortName',
-        'SortOrder': sortOrder ?? 'Ascending',
+        'SortBy': sortBy,
+        'SortOrder': sortBy == null ? null : sortOrder ?? 'Ascending',
       }..removeWhere((_, value) => value == null),
       options: Options(headers: _sessionHeaders(session)),
     );
     context?.throwIfObsolete();
     final items = response.data?['Items'] as List<dynamic>? ?? const [];
     return LibraryPage(
-      items: items
-          .whereType<Map<String, dynamic>>()
-          .map((item) => _mapItem(session, item))
-          .toList(growable: false),
+      items: _mapItems(session, items),
       startIndex:
           (response.data?['StartIndex'] as num?)?.toInt() ?? safeStartIndex,
       totalRecordCount: (response.data?['TotalRecordCount'] as num?)?.toInt(),
     );
-  }
-
-  @override
-  Future<List<LibraryItem>> fetchFavorites(AuthSession session) async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      _sessionUrl(session, '/Users/${session.profile.userId}/Items'),
-      queryParameters: {
-        'Recursive': true,
-        'Filters': 'IsFavorite',
-        'IncludeItemTypes': 'Audio,MusicAlbum,MusicArtist,Playlist',
-        'EnableImages': true,
-        'EnableUserData': true,
-        'Limit': 50,
-        'SortBy': 'SortName',
-      },
-      options: Options(headers: _sessionHeaders(session)),
-    );
-    final items = response.data?['Items'] as List<dynamic>? ?? const [];
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map((item) => _mapItem(session, item))
-        .toList(growable: false);
   }
 
   @override
@@ -189,8 +167,11 @@ class DioJellyfinGateway implements JellyfinGateway {
       _sessionUrl(session, '/Users/${session.profile.userId}/Items'),
       queryParameters: {
         'Recursive': true,
-        'IncludeItemTypes': 'Audio,MusicAlbum',
-        'EnableImages': true,
+        'IncludeItemTypes': 'Audio',
+        'Filters': 'IsPlayed',
+        'Fields': 'Album,AlbumId,ArtistItems',
+        'EnableImageTypes': 'Primary',
+        'ImageTypeLimit': 1,
         'EnableUserData': true,
         'Limit': 30,
         'SortBy': 'DatePlayed',
@@ -199,10 +180,7 @@ class DioJellyfinGateway implements JellyfinGateway {
       options: Options(headers: _sessionHeaders(session)),
     );
     final items = response.data?['Items'] as List<dynamic>? ?? const [];
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map((item) => _mapItem(session, item))
-        .toList(growable: false);
+    return _mapItems(session, items);
   }
 
   @override
@@ -232,6 +210,52 @@ class DioJellyfinGateway implements JellyfinGateway {
     } on DioException catch (error) {
       if (error.response?.statusCode == HttpStatus.notFound) return const [];
       rethrow;
+    }
+  }
+
+  @override
+  Future<LibraryItem> createPlaylist(AuthSession session, String name) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      _sessionUrl(session, '/Playlists'),
+      data: {
+        'Name': name,
+        'UserId': session.profile.userId,
+        'MediaType': 'Audio',
+        'Ids': const <String>[],
+      },
+      options: Options(headers: _sessionHeaders(session)),
+    );
+    final id = response.data?['Id'] as String?;
+    if (id == null || id.isEmpty) {
+      throw StateError('Jellyfin did not create the playlist.');
+    }
+    return LibraryItem(
+      id: id,
+      profileId: session.profile.profileId,
+      serverId: session.profile.serverId,
+      type: LibraryItemType.playlist,
+      name: name,
+      dateCreated: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> addToPlaylist(
+    AuthSession session,
+    String playlistId,
+    List<String> itemIds,
+  ) async {
+    if (itemIds.isEmpty) return;
+    // Jellyfin reads ids from the query string; chunk to keep URLs short.
+    for (final chunk in itemIds.slices(100)) {
+      await _dio.post<void>(
+        _sessionUrl(session, '/Playlists/$playlistId/Items'),
+        queryParameters: {
+          'Ids': chunk.join(','),
+          'UserId': session.profile.userId,
+        },
+        options: Options(headers: _sessionHeaders(session)),
+      );
     }
   }
 
@@ -271,6 +295,16 @@ class DioJellyfinGateway implements JellyfinGateway {
         'EnableRedirection': 'false',
         'EnableRemoteMedia': 'false',
       },
+    );
+  }
+
+  @override
+  Uri downloadUri(AuthSession session, LibraryItem item) {
+    _validateItemSession(session, item);
+    // static=true streams the untouched source file, so the saved bytes
+    // always match the extension taken from the item's container.
+    return Uri.parse(_sessionUrl(session, '/Audio/${item.id}/stream')).replace(
+      queryParameters: {'static': 'true', 'DeviceId': session.profile.deviceId},
     );
   }
 
@@ -367,13 +401,21 @@ class DioJellyfinGateway implements JellyfinGateway {
     );
   }
 
+  List<LibraryItem> _mapItems(AuthSession session, List<dynamic> items) {
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map((item) => _mapItem(session, item))
+        .toList(growable: false);
+  }
+
   LibraryItem _mapItem(AuthSession session, Map<String, dynamic> data) {
     final id = (data['Id'] as String?) ?? '';
     final userData = data['UserData'] as Map<String, dynamic>?;
-    final artistItems = data['ArtistItems'] as List<dynamic>?;
-    final firstArtist = artistItems
-        ?.whereType<Map<String, dynamic>>()
-        .firstOrNull;
+    String? firstId(Object? entries) =>
+        (entries as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .firstOrNull?['Id']
+            as String?;
     final artists =
         (data['Artists'] as List<dynamic>?)?.whereType<String>().toList() ??
         const <String>[];
@@ -388,7 +430,8 @@ class DioJellyfinGateway implements JellyfinGateway {
       subtitle: (data['AlbumArtist'] as String?) ?? artists.join(', '),
       albumId: data['AlbumId'] as String?,
       albumName: data['Album'] as String?,
-      artistId: firstArtist?['Id'] as String?,
+      // Albums credit their performers under AlbumArtists.
+      artistId: firstId(data['ArtistItems']) ?? firstId(data['AlbumArtists']),
       artists: artists,
       imageUrl: id.isEmpty || !hasPrimaryImage ? null : imageUri(session, id),
       duration: Duration(
@@ -400,6 +443,7 @@ class DioJellyfinGateway implements JellyfinGateway {
       isFavorite: (userData?['IsFavorite'] as bool?) ?? false,
       hasPrimaryImage: hasPrimaryImage,
       container: data['Container'] as String?,
+      dateCreated: DateTime.tryParse((data['DateCreated'] as String?) ?? ''),
     );
   }
 

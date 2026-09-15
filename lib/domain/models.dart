@@ -84,6 +84,7 @@ class LibraryItem {
     this.isFavorite = false,
     this.hasPrimaryImage = false,
     this.container,
+    this.dateCreated,
   });
 
   final String id;
@@ -105,6 +106,13 @@ class LibraryItem {
   final bool hasPrimaryImage;
   final String? container;
 
+  /// When the item was added to the server, for "Recently added" sorting.
+  final DateTime? dateCreated;
+
+  /// Artist credit for display: explicit artists, else the album artist.
+  String get artistLine =>
+      artists.isNotEmpty ? artists.join(', ') : subtitle ?? 'Unknown artist';
+
   LibraryItem copyWith({bool? isFavorite, Uri? imageUrl}) {
     return LibraryItem(
       id: id,
@@ -125,8 +133,16 @@ class LibraryItem {
       isFavorite: isFavorite ?? this.isFavorite,
       hasPrimaryImage: hasPrimaryImage,
       container: container,
+      dateCreated: dateCreated,
     );
   }
+}
+
+/// Disc, then track number; unnumbered tracks sort last.
+int compareTrackOrder(LibraryItem left, LibraryItem right) {
+  final disc = (left.discNumber ?? 0).compareTo(right.discNumber ?? 0);
+  if (disc != 0) return disc;
+  return (left.indexNumber ?? 9999).compareTo(right.indexNumber ?? 9999);
 }
 
 @immutable
@@ -144,6 +160,7 @@ class PlaybackQueue {
     this.currentIndex = -1,
     this.shuffle = false,
     this.repeatMode = RepeatMode.off,
+    this.playOrder = const [],
   });
 
   final List<LibraryItem> items;
@@ -151,9 +168,44 @@ class PlaybackQueue {
   final bool shuffle;
   final RepeatMode repeatMode;
 
+  /// Indices into [items] in the order they will play; differs from the
+  /// natural order while shuffled. Empty means natural order.
+  final List<int> playOrder;
+
   LibraryItem? get current => currentIndex >= 0 && currentIndex < items.length
       ? items[currentIndex]
       : null;
+
+  /// Indices of the items that play after [current], in play order.
+  List<int> get upNextIndices {
+    if (current == null) return const [];
+    final order = playOrder.length == items.length
+        ? playOrder
+        : List<int>.generate(items.length, (index) => index);
+    final position = order.indexOf(currentIndex);
+    return position < 0 ? const [] : order.sublist(position + 1);
+  }
+
+  // Snapshots are emitted on every position tick; identity checks on the
+  // lists keep equality O(1) since the handler only replaces them on change.
+  @override
+  bool operator ==(Object other) {
+    return other is PlaybackQueue &&
+        identical(other.items, items) &&
+        identical(other.playOrder, playOrder) &&
+        other.currentIndex == currentIndex &&
+        other.shuffle == shuffle &&
+        other.repeatMode == repeatMode;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    identityHashCode(items),
+    identityHashCode(playOrder),
+    currentIndex,
+    shuffle,
+    repeatMode,
+  );
 }
 
 @immutable
@@ -175,6 +227,27 @@ class PlaybackSnapshot {
   final bool buffering;
   final double volume;
   final DateTime? sleepDeadline;
+
+  PlaybackSnapshot copyWith({
+    PlaybackQueue? queue,
+    Duration? position,
+    bool? playing,
+    bool? buffering,
+    DateTime? sleepDeadline,
+    bool clearSleepDeadline = false,
+  }) {
+    return PlaybackSnapshot(
+      queue: queue ?? this.queue,
+      position: position ?? this.position,
+      bufferedPosition: bufferedPosition,
+      playing: playing ?? this.playing,
+      buffering: buffering ?? this.buffering,
+      volume: volume,
+      sleepDeadline: clearSleepDeadline
+          ? null
+          : sleepDeadline ?? this.sleepDeadline,
+    );
+  }
 }
 
 @immutable
@@ -187,7 +260,6 @@ class DownloadRecord {
     this.filePath,
     this.progress = 0,
     this.sizeBytes = 0,
-    this.checksum,
     this.lastPlayedAt,
   });
 
@@ -198,7 +270,6 @@ class DownloadRecord {
   final String? filePath;
   final double progress;
   final int sizeBytes;
-  final String? checksum;
   final DateTime? lastPlayedAt;
 }
 
@@ -245,14 +316,6 @@ class RemotePlaybackState {
   final bool buffering;
   final Duration position;
   final String? itemId;
-}
-
-@immutable
-class DiscoveredServer {
-  const DiscoveredServer({required this.name, required this.address});
-
-  final String name;
-  final Uri address;
 }
 
 @immutable

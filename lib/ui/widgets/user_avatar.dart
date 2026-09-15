@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jamhorse/core/artwork_cache.dart';
 import 'package:jamhorse/state/providers.dart';
 
@@ -44,6 +45,26 @@ class UserAvatar extends ConsumerWidget {
           errorWidget: (_, _, _) =>
               _AvatarFallback(size: size, label: session.profile.username),
         ),
+      ),
+    );
+  }
+}
+
+/// The avatar in phone headers; opens Settings, as Spotify's opens the
+/// account menu.
+class ProfileButton extends StatelessWidget {
+  const ProfileButton({super.key, this.size = 32});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Profile and settings',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => context.push('/settings'),
+        child: UserAvatar(size: size),
       ),
     );
   }

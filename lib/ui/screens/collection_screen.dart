@@ -2,145 +2,63 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jamhorse/app/theme.dart';
-import 'package:jamhorse/domain/models.dart';
-import 'package:jamhorse/state/providers.dart';
-import 'package:jamhorse/ui/widgets/artwork.dart';
+import 'package:jamhorse/ui/widgets/item_menu.dart';
+import 'package:jamhorse/ui/widgets/library_tiles.dart';
+import 'package:jamhorse/ui/widgets/user_avatar.dart';
 
-/// Mobile counterpart of the desktop sidebar: Liked Songs plus the user's
-/// Jellyfin playlists.
+/// The phone "Your Library" tab, sharing its filters, sort, and layout with
+/// the desktop sidebar.
 class CollectionScreen extends ConsumerWidget {
   const CollectionScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
-    final likedCount = state.library
-        .where((item) => item.type == LibraryItemType.track && item.isFavorite)
-        .length;
-    final playlists = state.library
-        .where((item) => item.type == LibraryItemType.playlist)
-        .toList(growable: false);
     return Scaffold(
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 26, 20, 120),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Your Library',
-                  style: Theme.of(context).textTheme.headlineLarge,
-                ),
-              ),
-              IconButton(
-                tooltip: 'Downloads',
-                onPressed: () => context.go('/downloads'),
-                icon: const Icon(Icons.download_for_offline_outlined),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: const [
-              _LibraryCategory(
-                label: 'Albums',
-                icon: Icons.album_rounded,
-                path: '/browse/album',
-              ),
-              _LibraryCategory(
-                label: 'Artists',
-                icon: Icons.person_rounded,
-                path: '/browse/artist',
-              ),
-              _LibraryCategory(
-                label: 'Songs',
-                icon: Icons.music_note_rounded,
-                path: '/browse/track',
-              ),
-              _LibraryCategory(
-                label: 'Genres',
-                icon: Icons.graphic_eq_rounded,
-                path: '/browse/genre',
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ListTile(
-            leading: Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [JamColors.accentBright, JamColors.accent],
-                ),
-              ),
-              child: const Icon(Icons.favorite_rounded, color: Colors.white),
-            ),
-            title: const Text('Liked Songs'),
-            subtitle: Text('$likedCount songs'),
-            onTap: () => context.go('/liked'),
-          ),
-          const SizedBox(height: 12),
-          if (playlists.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'Playlists you create in Jellyfin show up here.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: JamColors.muted),
-              ),
-            )
-          else
-            for (final playlist in playlists)
-              ListTile(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                hoverColor: JamColors.softHover,
-                leading: SizedBox.square(
-                  dimension: 52,
-                  child: Artwork(
-                    item: playlist,
-                    borderRadius: 10,
-                    iconSize: 22,
+      backgroundColor: JamColors.ink,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+              child: Row(
+                children: [
+                  const ProfileButton(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Your Library',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
                   ),
-                ),
-                title: Text(
-                  playlist.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: const Text('Playlist'),
-                onTap: () => context.push('/item/${playlist.id}'),
+                  IconButton(
+                    tooltip: 'Create playlist',
+                    iconSize: 28,
+                    onPressed: () => _createPlaylist(context),
+                    icon: const Icon(Icons.add_rounded),
+                  ),
+                ],
               ),
-        ],
+            ),
+            const LibraryToolbar(),
+            Expanded(
+              child: LibraryEntriesView(
+                onNavigate: (path) => context.push(path),
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 120),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
-}
 
-class _LibraryCategory extends StatelessWidget {
-  const _LibraryCategory({
-    required this.label,
-    required this.icon,
-    required this.path,
-  });
-
-  final String label;
-  final IconData icon;
-  final String path;
-
-  @override
-  Widget build(BuildContext context) {
-    return ActionChip(
-      avatar: Icon(icon, size: 19),
-      label: Text(label),
-      onPressed: () => context.push(path),
-    );
+  Future<void> _createPlaylist(BuildContext context) async {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final playlist = await showCreatePlaylistDialog(context, container);
+    if (playlist != null && context.mounted) {
+      await context.push('/item/${playlist.id}');
+    }
   }
 }

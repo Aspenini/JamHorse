@@ -1,73 +1,115 @@
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:jamhorse/app/theme.dart';
 import 'package:jamhorse/domain/models.dart';
+import 'package:jamhorse/state/library_index.dart';
 import 'package:jamhorse/state/providers.dart';
+import 'package:jamhorse/ui/layout.dart';
 import 'package:jamhorse/ui/widgets/artwork.dart';
+import 'package:jamhorse/ui/widgets/transport_controls.dart';
 
 class DownloadsScreen extends ConsumerWidget {
   const DownloadsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
-    final profileId = state.session?.profile.profileId;
+    final desktop = isDesktopLayout(context);
+    final profileId = ref.watch(
+      sessionProvider.select((session) => session?.profile.profileId),
+    );
     final records = (ref.watch(downloadRecordsProvider).value ?? const [])
         .where((record) => record.profileId == profileId)
         .toList(growable: false);
-    final library = state.library;
+    final index = ref.watch(libraryIndexProvider);
+    final completed = [
+      for (final record in records)
+        if (record.status == DownloadStatus.complete)
+          ?index.byId[record.itemId],
+    ];
+    final completedIds = {for (final track in completed) track.id};
+    final controller = ref.read(appControllerProvider.notifier);
     return Scaffold(
+      backgroundColor: desktop ? Colors.transparent : JamColors.ink,
+      appBar: desktop
+          ? null
+          : AppBar(
+              backgroundColor: JamColors.ink,
+              title: const Text('Downloads'),
+            ),
       body: CustomScrollView(
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
+            padding: EdgeInsets.fromLTRB(
+              desktop ? 24 : 16,
+              desktop ? 24 : 8,
+              16,
+              12,
+            ),
             sliver: SliverToBoxAdapter(
-              child: Text(
-                'Downloads',
-                style: Theme.of(context).textTheme.headlineLarge,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: desktop
+                        ? Text(
+                            'Downloads',
+                            style: Theme.of(context).textTheme.headlineLarge,
+                          )
+                        : Text(
+                            '${completed.length} songs available offline',
+                            style: const TextStyle(color: JamColors.muted),
+                          ),
+                  ),
+                  if (completed.isNotEmpty)
+                    ContextPlayButton(
+                      size: 48,
+                      isPlayingFrom: (current) =>
+                          completedIds.contains(current.id),
+                      onPlay: () => controller.playQueue(completed),
+                    ),
+                ],
               ),
             ),
           ),
           if (records.isEmpty)
-            const SliverFillRemaining(child: _EmptyDownloads())
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyDownloads(),
+            )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 120),
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 120),
               sliver: SliverList.builder(
                 itemCount: records.length,
-                itemBuilder: (context, index) {
-                  final record = records[index];
-                  final item = library
-                      .where(
-                        (entry) =>
-                            entry.profileId == record.profileId &&
-                            entry.id == record.itemId,
-                      )
-                      .firstOrNull;
+                itemBuilder: (context, position) {
+                  final record = records[position];
+                  final item = index.byId[record.itemId];
                   return ListTile(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(6),
                     ),
                     hoverColor: JamColors.softHover,
-                    leading: item == null
-                        ? const SizedBox.square(
-                            dimension: 52,
-                            child: Icon(Icons.music_note_rounded),
-                          )
-                        : SizedBox.square(
-                            dimension: 52,
-                            child: Artwork(
-                              item: item,
-                              borderRadius: 9,
-                              iconSize: 22,
-                            ),
-                          ),
-                    title: Text(item?.name ?? 'Downloaded track'),
+                    leading: SizedBox.square(
+                      dimension: 48,
+                      child: item == null
+                          ? const Icon(Icons.music_note_rounded)
+                          : Artwork(item: item, borderRadius: 4, iconSize: 20),
+                    ),
+                    title: Text(
+                      item?.name ?? 'Downloaded track',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_statusLabel(record.status)),
+                        Text(
+                          [
+                            if (item != null) item.artistLine,
+                            _statusLabel(record.status),
+                          ].join(' • '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         if (record.status == DownloadStatus.downloading ||
                             record.status == DownloadStatus.queued)
                           Padding(
@@ -84,9 +126,8 @@ class DownloadsScreen extends ConsumerWidget {
                     onTap:
                         item == null || record.status != DownloadStatus.complete
                         ? null
-                        : () => ref
-                              .read(appControllerProvider.notifier)
-                              .play(item),
+                        : () =>
+                              controller.playQueue(completed, startWith: item),
                   );
                 },
               ),
@@ -116,7 +157,7 @@ class _DownloadAction extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final manager = ref.read(downloadManagerProvider);
-    final session = ref.watch(appControllerProvider).session;
+    final session = ref.watch(sessionProvider);
     return switch (record.status) {
       DownloadStatus.downloading => IconButton(
         tooltip: 'Pause',
@@ -145,7 +186,7 @@ class _DownloadAction extends ConsumerWidget {
         ],
       ),
       DownloadStatus.complete => IconButton(
-        tooltip: 'Delete download',
+        tooltip: 'Remove download',
         onPressed: () => manager.delete(record.id),
         icon: const Icon(Icons.delete_outline_rounded),
       ),
@@ -181,7 +222,8 @@ class _EmptyDownloads extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Long-press an album, playlist, or song to download it.',
+              'Open the ••• menu on an album, playlist, or song and choose '
+              'Download.',
               textAlign: TextAlign.center,
               style: TextStyle(color: JamColors.muted),
             ),

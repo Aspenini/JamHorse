@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          # Keep in step with .fvmrc.
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test tool
+      - run: flutter analyze
+      # Golden images are rendered on the developer's OS; see dart_test.yaml.
+      - run: flutter test --exclude-tags golden
+
+  cast-receiver:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cast_receiver
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cast_receiver/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

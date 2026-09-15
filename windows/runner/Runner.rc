@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "JamHorse contributors" "\0"
+            VALUE "CompanyName", "Aspenini" "\0"
             VALUE "FileDescription", "JamHorse Jellyfin music player" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "JamHorse" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 JamHorse contributors. GPLv3." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Aspenini. GPLv3." "\0"
             VALUE "OriginalFilename", "jamhorse.exe" "\0"
             VALUE "ProductName", "JamHorse" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:jamhorse/core/server_uri_policy.dart';
 import 'package:jamhorse/data/credentials.dart';
@@ -10,6 +12,8 @@ import 'package:jamhorse/domain/contracts.dart';
 import 'package:jamhorse/domain/models.dart';
 import 'package:jamhorse/downloads/background_download_manager.dart';
 import 'package:jamhorse/platform/platform_media_bridge.dart';
+import 'package:jamhorse/state/library_index.dart';
+import 'package:jamhorse/state/navigation_history.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -93,27 +97,34 @@ final appControllerProvider = NotifierProvider<AppController, AppState>(
   AppController.new,
 );
 
+final sessionProvider = Provider<AuthSession?>((ref) {
+  return ref.watch(appControllerProvider.select((state) => state.session));
+});
+
 final searchQueryProvider = NotifierProvider<SearchQueryController, String>(
   SearchQueryController.new,
 );
 
+/// The shared search text for the desktop top bar and the phone Search tab;
+/// server searches run once typing pauses.
 class SearchQueryController extends Notifier<String> {
+  Timer? _debounce;
+
   @override
-  String build() => '';
+  String build() {
+    ref.onDispose(() => _debounce?.cancel());
+    return '';
+  }
 
-  void set(String value) => state = value;
-}
-
-/// Whether the Now Playing side panel is slid in, Spotify style.
-final nowPlayingViewProvider = NotifierProvider<NowPlayingViewController, bool>(
-  NowPlayingViewController.new,
-);
-
-class NowPlayingViewController extends Notifier<bool> {
-  @override
-  bool build() => true;
-
-  void set(bool visible) => state = visible;
+  void set(String value) {
+    if (value == state) return;
+    state = value;
+    _debounce?.cancel();
+    _debounce = Timer(
+      const Duration(milliseconds: 260),
+      () => ref.read(appControllerProvider.notifier).search(value),
+    );
+  }
 }
 
 final playbackSnapshotProvider = StreamProvider<PlaybackSnapshot>((ref) {
@@ -127,9 +138,7 @@ final downloadRecordsProvider = StreamProvider<List<DownloadRecord>>((ref) {
 
 final lyricsProvider = FutureProvider.autoDispose
     .family<List<LyricsLine>, String>((ref, itemId) {
-      final session = ref.watch(
-        appControllerProvider.select((state) => state.session),
-      );
+      final session = ref.watch(sessionProvider);
       if (session == null) return Future.value(const []);
       return ref.watch(jellyfinGatewayProvider).fetchLyrics(session, itemId);
     });
@@ -151,9 +160,7 @@ final downloadedItemIdsProvider = Provider<Set<String>>((ref) {
 
 /// Newest albums on the server, for the Home "Recently added" row.
 final recentlyAddedProvider = FutureProvider<List<LibraryItem>>((ref) {
-  final session = ref.watch(
-    appControllerProvider.select((state) => state.session),
-  );
+  final session = ref.watch(sessionProvider);
   if (session == null) return Future.value(const []);
   return ref
       .watch(jellyfinGatewayProvider)
@@ -166,55 +173,70 @@ final recentlyAddedProvider = FutureProvider<List<LibraryItem>>((ref) {
       );
 });
 
+/// Tracks most recently played on any Jellyfin client.
+final recentlyPlayedProvider = FutureProvider<List<LibraryItem>>((ref) {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return Future.value(const []);
+  return ref.watch(jellyfinGatewayProvider).fetchRecentlyPlayed(session);
+});
+
 /// Albums within one genre, for the per-genre Home rows.
 final genreAlbumsProvider = FutureProvider.family<List<LibraryItem>, String>((
   ref,
   genreId,
 ) {
-  final session = ref.watch(
-    appControllerProvider.select((state) => state.session),
-  );
+  final session = ref.watch(sessionProvider);
   if (session == null) return Future.value(const []);
   return ref
       .watch(jellyfinGatewayProvider)
       .fetchLibrary(
         session,
         types: const {LibraryItemType.album},
-        parentId: genreId,
+        genreId: genreId,
+        sortBy: 'Random',
         limit: 20,
       );
 });
 
-/// Album names by id, for the ALBUM column in track tables.
-final albumNamesProvider = Provider<Map<String, String>>((ref) {
-  final library = ref.watch(
-    appControllerProvider.select((state) => state.library),
-  );
-  return {
-    for (final item in library)
-      if (item.type == LibraryItemType.album) item.id: item.name,
-  };
-});
+typedef ItemKey = (String id, LibraryItemType type);
 
-/// Tracks inside an album or playlist, fetched from the server in play
-/// order. Used by detail views whose children are not in the synced
-/// library snapshot (playlist entries in particular).
-final childrenProvider = FutureProvider.autoDispose
-    .family<List<LibraryItem>, String>((ref, parentId) {
-      final session = ref.watch(
-        appControllerProvider.select((state) => state.session),
-      );
+/// A detail page's contents from the server: tracks for albums and
+/// playlists, albums for artists and genres.
+final itemChildrenProvider = FutureProvider.autoDispose
+    .family<List<LibraryItem>, ItemKey>((ref, key) {
+      final session = ref.watch(sessionProvider);
+      if (session == null) return Future.value(const []);
+      return ref
+          .watch(libraryRepositoryProvider)
+          .childrenFor(session, _stubItem(session, key));
+    });
+
+/// An artist's most played tracks, for the "Popular" list.
+final artistTopTracksProvider = FutureProvider.autoDispose
+    .family<List<LibraryItem>, String>((ref, artistId) {
+      final session = ref.watch(sessionProvider);
       if (session == null) return Future.value(const []);
       return ref
           .watch(jellyfinGatewayProvider)
           .fetchLibrary(
             session,
             types: const {LibraryItemType.track},
-            parentId: parentId,
-            sortBy: 'ParentIndexNumber,IndexNumber,SortName',
-            limit: 5000,
+            artistId: artistId,
+            sortBy: 'PlayCount,SortName',
+            sortOrder: 'Descending,Ascending',
+            limit: 10,
           );
     });
+
+LibraryItem _stubItem(AuthSession session, ItemKey key) {
+  return LibraryItem(
+    id: key.$1,
+    profileId: session.profile.profileId,
+    serverId: session.profile.serverId,
+    type: key.$2,
+    name: '',
+  );
+}
 
 class AppState {
   const AppState({
@@ -265,6 +287,13 @@ class AppState {
 }
 
 class AppController extends Notifier<AppState> {
+  /// Launches within this window reuse the cached library instead of
+  /// downloading it again; pull-to-refresh always syncs.
+  static const autoSyncInterval = Duration(minutes: 15);
+
+  /// Spotify-style shuffle of a very large library plays a sample.
+  static const _shuffleAllLimit = 500;
+
   bool _restoring = false;
   int _sessionEpoch = 0;
   String? _syncingProfileId;
@@ -314,34 +343,52 @@ class AppController extends Notifier<AppState> {
       );
       await synchronize();
     } catch (error) {
-      state = state.copyWith(connecting: false, error: _friendlyError(error));
+      final message = error is DioException && error.response?.statusCode == 401
+          ? 'Incorrect username or password.'
+          : _friendlyError(error);
+      state = state.copyWith(connecting: false, error: message);
       rethrow;
     }
   }
 
-  Future<void> synchronize() async {
+  /// Refreshes the library from the server. With [force] false the sync is
+  /// skipped when the cache is younger than [autoSyncInterval].
+  Future<void> synchronize({bool force = true}) async {
     final session = state.session;
     if (session == null || _syncingProfileId == session.profile.profileId) {
       return;
     }
+    final profileId = session.profile.profileId;
+    final syncKey = 'lastLibrarySync:$profileId';
+    final prefs = await SharedPreferences.getInstance();
+    if (!force && state.library.isNotEmpty) {
+      final last = prefs.getInt(syncKey);
+      if (last != null &&
+          DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(last)) <
+              autoSyncInterval) {
+        return;
+      }
+    }
+    if (_syncingProfileId == profileId) return;
     final epoch = _sessionEpoch;
-    _syncingProfileId = session.profile.profileId;
+    _syncingProfileId = profileId;
     state = state.copyWith(syncing: true, clearError: true);
     try {
       final context = OperationContext(
-        profileId: session.profile.profileId,
+        profileId: profileId,
         generation: epoch,
         isCurrentCallback: () => _isCurrent(session, epoch),
       );
       final items = await _library.synchronize(session, context: context);
       if (!_isCurrent(session, epoch)) return;
       await _player.setBrowseLibrary(session, items);
+      await prefs.setInt(syncKey, DateTime.now().millisecondsSinceEpoch);
       state = state.copyWith(library: items, syncing: false);
+      ref.invalidate(recentlyAddedProvider);
+      ref.invalidate(recentlyPlayedProvider);
     } catch (error) {
       if (!_isCurrent(session, epoch)) return;
-      final cached = await _library.readCachedLibrary(
-        session.profile.profileId,
-      );
+      final cached = await _library.readCachedLibrary(profileId);
       if (!_isCurrent(session, epoch)) return;
       state = state.copyWith(
         library: cached,
@@ -350,7 +397,7 @@ class AppController extends Notifier<AppState> {
         clearError: cached.isNotEmpty,
       );
     } finally {
-      if (_syncingProfileId == session.profile.profileId) {
+      if (_syncingProfileId == profileId) {
         _syncingProfileId = null;
         if (_isCurrent(session, epoch) && state.syncing) {
           state = state.copyWith(syncing: false);
@@ -370,11 +417,14 @@ class AppController extends Notifier<AppState> {
       state = state.copyWith(searchResults: const []);
       return;
     }
+    final needle = trimmed.toLowerCase();
     final local = state.library
-        .where((item) {
-          final haystack = '${item.name} ${item.subtitle ?? ''}'.toLowerCase();
-          return haystack.contains(trimmed.toLowerCase());
-        })
+        .where(
+          (item) => '${item.name} ${item.subtitle ?? ''}'
+              .toLowerCase()
+              .contains(needle),
+        )
+        .take(200)
         .toList(growable: false);
     state = state.copyWith(searchResults: local);
     try {
@@ -387,61 +437,80 @@ class AppController extends Notifier<AppState> {
     }
   }
 
+  /// Plays [selected]. A single track plays within its album, like tapping
+  /// a song in Spotify; anything else plays its tracks from the top.
   Future<void> play(LibraryItem selected) async {
     final session = state.session;
     if (session == null) return;
-    final epoch = _sessionEpoch;
-    var tracks = <LibraryItem>[];
     if (selected.type == LibraryItemType.track) {
-      tracks = state.library
-          .where((item) => item.type == LibraryItemType.track)
-          .toList(growable: false);
-      if (!tracks.any((item) => item.id == selected.id)) {
-        tracks = [selected, ...tracks];
-      }
-    } else {
-      tracks = await _gateway.fetchLibrary(
-        session,
-        types: const {LibraryItemType.track},
-        parentId: selected.id,
-        sortBy: 'ParentIndexNumber,IndexNumber,SortName',
-        limit: 5000,
-      );
-      if (!_isCurrent(session, epoch)) return;
+      final album = ref
+          .read(libraryIndexProvider)
+          .tracksByAlbum[selected.albumId];
+      final context = album != null && album.any((t) => t.id == selected.id)
+          ? album
+          : [selected];
+      return playQueue(context, startWith: selected);
     }
-    if (tracks.isEmpty) return;
-    final index = selected.type == LibraryItemType.track
-        ? tracks.indexWhere((item) => item.id == selected.id)
-        : 0;
-    await _player.load(session, tracks, initialIndex: index < 0 ? 0 : index);
+    final epoch = _sessionEpoch;
+    final tracks = await _library.tracksFor(session, selected);
+    if (!_isCurrent(session, epoch) || tracks.isEmpty) return;
+    await _player.load(session, tracks);
   }
 
   /// Plays an explicit list of tracks as the queue, e.g. Liked Songs or a
-  /// playlist page, optionally starting from one of them.
+  /// playlist page, optionally starting from one of them. A null [shuffle]
+  /// keeps the player's current shuffle mode.
   Future<void> playQueue(
     List<LibraryItem> tracks, {
     LibraryItem? startWith,
-    bool shuffle = false,
+    bool? shuffle,
   }) async {
     final session = state.session;
     if (session == null || tracks.isEmpty) return;
-    final queue = shuffle ? (tracks.toList()..shuffle()) : tracks;
-    final index = startWith == null
+    var index = startWith == null
         ? 0
-        : queue.indexWhere((item) => item.id == startWith.id);
-    await _player.load(session, queue, initialIndex: index < 0 ? 0 : index);
+        : tracks.indexWhere((item) => item.id == startWith.id);
+    if (startWith == null && shuffle == true) {
+      index = Random().nextInt(tracks.length);
+    }
+    await _player.load(
+      session,
+      tracks,
+      initialIndex: index < 0 ? 0 : index,
+      shuffle: shuffle,
+    );
   }
 
   Future<void> shuffleAll() async {
+    final tracks = ref.read(libraryIndexProvider).tracks.toList()..shuffle();
+    await playQueue(tracks.take(_shuffleAllLimit).toList(), shuffle: true);
+  }
+
+  /// Plays all of [item]'s tracks with shuffle turned on.
+  Future<void> shufflePlay(LibraryItem item) async {
     final session = state.session;
     if (session == null) return;
-    final tracks =
-        state.library
-            .where((item) => item.type == LibraryItemType.track)
-            .toList()
-          ..shuffle();
-    if (tracks.isEmpty) return;
-    await _player.load(session, tracks);
+    final epoch = _sessionEpoch;
+    final tracks = await _library.tracksFor(session, item);
+    if (!_isCurrent(session, epoch) || tracks.isEmpty) return;
+    await playQueue(tracks, shuffle: true);
+  }
+
+  Future<void> playNext(LibraryItem item) => _enqueue(item, next: true);
+
+  Future<void> addToQueue(LibraryItem item) => _enqueue(item, next: false);
+
+  Future<void> _enqueue(LibraryItem item, {required bool next}) async {
+    final session = state.session;
+    if (session == null) return;
+    final epoch = _sessionEpoch;
+    final tracks = await _library.tracksFor(session, item);
+    if (!_isCurrent(session, epoch) || tracks.isEmpty) return;
+    if (next) {
+      await _player.playNext(tracks);
+    } else {
+      await _player.addToQueue(tracks);
+    }
   }
 
   Future<void> toggleFavorite(LibraryItem item) async {
@@ -449,43 +518,60 @@ class AppController extends Notifier<AppState> {
     if (session == null) return;
     final epoch = _sessionEpoch;
     final next = !item.isFavorite;
-    final optimistic = state.library
-        .map(
-          (entry) =>
-              entry.id == item.id ? entry.copyWith(isFavorite: next) : entry,
-        )
-        .toList(growable: false);
-    state = state.copyWith(library: optimistic);
-    await _player.setBrowseLibrary(session, optimistic);
+    _setFavoriteLocally(session, item, next);
     try {
       await _gateway.setFavorite(session, item.id, next);
       if (!_isCurrent(session, epoch)) return;
-      await _library.cacheLibrary(session.profile.profileId, optimistic);
-      final updated = optimistic.firstWhere(
-        (entry) => entry.id == item.id,
-        orElse: () => item.copyWith(isFavorite: next),
-      );
-      await _player.updateItemMetadata(updated);
+      await _library.setFavorite(session.profile.profileId, item.id, next);
     } catch (error) {
       if (!_isCurrent(session, epoch)) return;
-      state = state.copyWith(
-        library: state.library
-            .map(
-              (entry) => entry.id == item.id
-                  ? entry.copyWith(isFavorite: !next)
-                  : entry,
-            )
-            .toList(growable: false),
-        error: _friendlyError(error),
-      );
-      await _player.setBrowseLibrary(session, state.library);
-      for (final restored in state.library) {
-        if (restored.id == item.id) {
-          await _player.updateItemMetadata(restored);
-          break;
-        }
-      }
+      _setFavoriteLocally(session, item, !next);
+      state = state.copyWith(error: _friendlyError(error));
     }
+  }
+
+  void _setFavoriteLocally(
+    AuthSession session,
+    LibraryItem item,
+    bool favorite,
+  ) {
+    final library = List<LibraryItem>.unmodifiable([
+      for (final entry in state.library)
+        entry.id == item.id ? entry.copyWith(isFavorite: favorite) : entry,
+    ]);
+    state = state.copyWith(library: library);
+    unawaited(_player.setBrowseLibrary(session, library));
+    unawaited(_player.updateItemMetadata(item.copyWith(isFavorite: favorite)));
+  }
+
+  /// Creates an empty Jellyfin playlist and adds it to the library.
+  Future<LibraryItem?> createPlaylist(String name) async {
+    final session = state.session;
+    final trimmed = name.trim();
+    if (session == null || trimmed.isEmpty) return null;
+    final epoch = _sessionEpoch;
+    final playlist = await _gateway.createPlaylist(session, trimmed);
+    if (!_isCurrent(session, epoch)) return null;
+    await _library.upsertItem(playlist);
+    state = state.copyWith(
+      library: List.unmodifiable([...state.library, playlist]),
+    );
+    return playlist;
+  }
+
+  /// Adds [item] (or all of its tracks) to [playlist]; returns how many
+  /// tracks were added.
+  Future<int> addToPlaylist(LibraryItem playlist, LibraryItem item) async {
+    final session = state.session;
+    if (session == null) return 0;
+    final tracks = await _library.tracksFor(session, item);
+    await _gateway.addToPlaylist(
+      session,
+      playlist.id,
+      tracks.map((track) => track.id).toList(growable: false),
+    );
+    ref.invalidate(itemChildrenProvider((playlist.id, playlist.type)));
+    return tracks.length;
   }
 
   Future<void> download(LibraryItem item, {bool? wifiOnly}) async {
@@ -497,16 +583,7 @@ class AppController extends Notifier<AppState> {
         wifiOnly ?? prefs.getBool('wifiOnlyDownloads') ?? false;
     if (!_isCurrent(session, epoch)) return;
     final manager = ref.read(downloadManagerProvider);
-    if (item.type == LibraryItemType.track) {
-      return manager.enqueue(session, item, wifiOnly: requiresWifi);
-    }
-    final tracks = await _gateway.fetchLibrary(
-      session,
-      types: const {LibraryItemType.track},
-      parentId: item.id,
-      limit: 5000,
-    );
-    if (!_isCurrent(session, epoch)) return;
+    final tracks = await _library.tracksFor(session, item);
     for (final track in tracks) {
       if (!_isCurrent(session, epoch)) return;
       await manager.enqueue(session, track, wifiOnly: requiresWifi);
@@ -523,7 +600,8 @@ class AppController extends Notifier<AppState> {
     if (state.session?.profile.profileId == profile.profileId) return;
     _sessionEpoch++;
     _searchEpoch++;
-    await _player.stop();
+    await _player.reset();
+    ref.read(navigationHistoryProvider.notifier).reset();
     final session = await _profiles.restore(profile);
     if (session == null) {
       state = state.copyWith(
@@ -537,7 +615,7 @@ class AppController extends Notifier<AppState> {
     state = state.copyWith(session: session, library: cached, clearError: true);
     await _player.restore(session, cached);
     await _profiles.save(session);
-    await synchronize();
+    await synchronize(force: false);
   }
 
   Future<void> logout({
@@ -547,7 +625,7 @@ class AppController extends Notifier<AppState> {
     final session = state.session;
     _sessionEpoch++;
     _searchEpoch++;
-    await _player.stop();
+    await _player.reset();
     if (session != null && forgetServer) {
       await ref
           .read(downloadManagerProvider)
@@ -590,15 +668,31 @@ class AppController extends Notifier<AppState> {
         library: cached,
       );
       await _player.restore(session, cached);
-      unawaited(synchronize());
+      unawaited(synchronize(force: false));
     } catch (error) {
       state = state.copyWith(initializing: false, error: _friendlyError(error));
     }
   }
 
   String _friendlyError(Object error) {
-    final value = error.toString();
-    return value
+    if (error is DioException) {
+      return switch (error.response?.statusCode) {
+        401 => 'Your Jellyfin session expired. Sign in again.',
+        403 => 'Your Jellyfin account is not allowed to do that.',
+        final int status => 'Jellyfin returned an error ($status).',
+        null => switch (error.type) {
+          DioExceptionType.connectionTimeout ||
+          DioExceptionType.sendTimeout ||
+          DioExceptionType.receiveTimeout =>
+            'The server took too long to respond.',
+          DioExceptionType.badCertificate =>
+            "The server's TLS certificate is not trusted.",
+          _ => "Can't reach the server. Check your connection.",
+        },
+      };
+    }
+    return error
+        .toString()
         .replaceFirst('Exception: ', '')
         .replaceFirst('Bad state: ', '')
         .replaceFirst('FormatException: ', '');

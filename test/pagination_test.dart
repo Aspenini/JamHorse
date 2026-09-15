@@ -77,6 +77,8 @@ class _PagingGateway implements JellyfinGateway {
     Set<LibraryItemType> types = const {},
     int limit = 200,
     String? parentId,
+    String? artistId,
+    String? genreId,
     String? searchTerm,
     String? sortBy,
     String? sortOrder,

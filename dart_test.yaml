@@ -1,0 +1,3 @@
+tags:
+  # Pixel comparisons; rendering varies by OS, so CI excludes them.
+  golden:

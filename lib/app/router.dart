@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:jamhorse/domain/models.dart';
+import 'package:jamhorse/state/navigation_history.dart';
 import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/screens/browse_screen.dart';
 import 'package:jamhorse/ui/screens/collection_screen.dart';
@@ -10,25 +12,32 @@ import 'package:jamhorse/ui/screens/item_detail_screen.dart';
 import 'package:jamhorse/ui/screens/liked_songs_screen.dart';
 import 'package:jamhorse/ui/screens/login_screen.dart';
 import 'package:jamhorse/ui/screens/now_playing_screen.dart';
+import 'package:jamhorse/ui/screens/search_screen.dart';
 import 'package:jamhorse/ui/screens/settings_screen.dart';
 import 'package:jamhorse/ui/shell/adaptive_shell.dart';
 
+typedef _AuthGate = ({bool initializing, bool authenticated});
+
+/// Built once for the app's lifetime. Sign-in changes re-run the redirect
+/// through [GoRouter.refreshListenable] instead of replacing the router,
+/// which would discard the navigation stack.
 final routerProvider = Provider<GoRouter>((ref) {
-  final auth = ref.watch(
-    appControllerProvider.select(
-      (state) => (state.initializing, state.isAuthenticated),
-    ),
+  _AuthGate gate(AppState state) =>
+      (initializing: state.initializing, authenticated: state.isAuthenticated);
+  final auth = ValueNotifier<_AuthGate>(gate(ref.read(appControllerProvider)));
+  ref.listen(
+    appControllerProvider.select(gate),
+    (_, next) => auth.value = next,
   );
-  return GoRouter(
-    initialLocation: auth.$1
-        ? '/splash'
-        : auth.$2
-        ? '/home'
-        : '/login',
+
+  final router = GoRouter(
+    initialLocation: '/splash',
+    refreshListenable: auth,
     redirect: (context, routerState) {
       final location = routerState.matchedLocation;
-      if (auth.$1) return location == '/splash' ? null : '/splash';
-      if (!auth.$2) return location == '/login' ? null : '/login';
+      final (:initializing, :authenticated) = auth.value;
+      if (initializing) return location == '/splash' ? null : '/splash';
+      if (!authenticated) return location == '/login' ? null : '/login';
       if (location == '/login' || location == '/splash') return '/home';
       return null;
     },
@@ -45,6 +54,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/home',
             pageBuilder: (context, state) =>
                 const NoTransitionPage(child: HomeScreen()),
+          ),
+          GoRoute(
+            path: '/search',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SearchScreen()),
           ),
           GoRoute(
             path: '/liked',
@@ -73,8 +87,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/item/:id',
-            builder: (context, state) =>
-                ItemDetailScreen(itemId: state.pathParameters['id']!),
+            builder: (context, state) => ItemDetailScreen(
+              itemId: state.pathParameters['id']!,
+              fallback: state.extra is LibraryItem
+                  ? state.extra! as LibraryItem
+                  : null,
+            ),
           ),
         ],
       ),
@@ -112,4 +130,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ),
   );
+
+  void recordLocation() {
+    final location = router.routerDelegate.currentConfiguration.uri.toString();
+    final history = ref.read(navigationHistoryProvider.notifier);
+    if (location.startsWith('/login') || location.startsWith('/splash')) {
+      history.reset();
+    } else {
+      history.record(location);
+    }
+  }
+
+  router.routerDelegate.addListener(recordLocation);
+  ref.onDispose(() {
+    router.routerDelegate.removeListener(recordLocation);
+    router.dispose();
+    auth.dispose();
+  });
+  return router;
 });

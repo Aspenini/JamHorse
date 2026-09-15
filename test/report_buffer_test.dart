@@ -15,14 +15,18 @@ void main() {
   tearDown(() => database.close());
 
   test('offline reports do not throw and flush in start/stop order', () async {
-    final inner = _RecordingGateway()..fail = true;
-    final gateway = ReportBufferingGateway(inner, database);
+    final inner = _RecordingReporter()..fail = true;
+    final reporter = BufferedPlaybackReporter(inner, database);
 
-    await gateway.reportPlaybackStarted(_session, _item, playSessionId: 'play');
+    await reporter.reportPlaybackStarted(
+      _session,
+      _item,
+      playSessionId: 'play',
+    );
     expect(await database.oldestPendingReports('profile'), hasLength(1));
 
     inner.fail = false;
-    await gateway.reportPlaybackStopped(
+    await reporter.reportPlaybackStopped(
       _session,
       _item,
       const Duration(seconds: 9),
@@ -34,19 +38,19 @@ void main() {
   });
 
   test('overlapping report calls are serialized', () async {
-    final inner = _RecordingGateway(delay: const Duration(milliseconds: 5));
-    final gateway = ReportBufferingGateway(inner, database);
+    final inner = _RecordingReporter(delay: const Duration(milliseconds: 5));
+    final reporter = BufferedPlaybackReporter(inner, database);
 
     await Future.wait([
-      gateway.reportPlaybackStarted(_session, _item),
-      gateway.reportPlaybackProgress(
+      reporter.reportPlaybackStarted(_session, _item),
+      reporter.reportPlaybackProgress(
         _session,
         _item,
         const Duration(seconds: 1),
         paused: false,
         playSessionId: 'play',
       ),
-      gateway.reportPlaybackStopped(
+      reporter.reportPlaybackStopped(
         _session,
         _item,
         const Duration(seconds: 2),
@@ -74,10 +78,10 @@ void main() {
         createdAt: DateTime(2026),
       ),
     );
-    final inner = _RecordingGateway();
-    final gateway = ReportBufferingGateway(inner, database);
+    final inner = _RecordingReporter();
+    final reporter = BufferedPlaybackReporter(inner, database);
 
-    await gateway.reportPlaybackProgress(
+    await reporter.reportPlaybackProgress(
       _session,
       _item,
       const Duration(seconds: 5),
@@ -90,36 +94,6 @@ void main() {
       'progress:new-play:5000:false',
     ]);
     expect(await database.oldestPendingReports('profile'), isEmpty);
-  });
-
-  test('non-reporting gateway operations pass through unchanged', () async {
-    final inner = _ForwardingGateway();
-    final gateway = ReportBufferingGateway(inner, database);
-
-    expect(
-      (await gateway.inspectServer(_session.profile.baseUrl)).id,
-      'server',
-    );
-    expect(
-      (await gateway.authenticate(
-        baseUrl: _session.profile.baseUrl,
-        username: 'listener',
-        password: 'password',
-        deviceId: 'device',
-        allowPrivateHttp: false,
-      )).token,
-      'secret',
-    );
-    expect((await gateway.fetchLibraryPage(_session)).items, [_item]);
-    expect(await gateway.fetchFavorites(_session), [_item]);
-    expect(await gateway.fetchRecentlyPlayed(_session), [_item]);
-    expect((await gateway.fetchLyrics(_session, 'track')).single.text, 'line');
-    await gateway.setFavorite(_session, 'track', true);
-    expect(gateway.imageUri(_session, 'track').path, '/image/track');
-    expect(gateway.userImageUri(_session).path, '/user-image/user');
-    expect(gateway.streamUri(_session, _item).path, '/stream/track');
-    expect(gateway.playbackHeaders(_session), {'Authorization': 'secret'});
-    expect(inner.favorite, isTrue);
   });
 }
 
@@ -145,8 +119,8 @@ const _item = LibraryItem(
   name: 'Song',
 );
 
-class _RecordingGateway implements JellyfinGateway {
-  _RecordingGateway({this.delay = Duration.zero});
+class _RecordingReporter implements PlaybackReporter {
+  _RecordingReporter({this.delay = Duration.zero});
 
   final Duration delay;
   final events = <String>[];
@@ -159,7 +133,7 @@ class _RecordingGateway implements JellyfinGateway {
     if (_inFlight > maxInFlight) maxInFlight = _inFlight;
     try {
       if (delay > Duration.zero) await Future<void>.delayed(delay);
-      if (fail) throw const SocketExceptionForTest();
+      if (fail) throw const _OfflineForTest();
       events.add(value);
     } finally {
       _inFlight--;
@@ -189,85 +163,8 @@ class _RecordingGateway implements JellyfinGateway {
     Duration position, {
     String? playSessionId,
   }) => _record('stopped:$playSessionId:${position.inMilliseconds}');
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class SocketExceptionForTest implements Exception {
-  const SocketExceptionForTest();
-}
-
-class _ForwardingGateway extends _RecordingGateway {
-  bool favorite = false;
-
-  @override
-  Future<ServerInfo> inspectServer(Uri baseUrl) async =>
-      const ServerInfo(id: 'server', name: 'Music', version: '10.10.0');
-
-  @override
-  Future<AuthSession> authenticate({
-    required Uri baseUrl,
-    required String username,
-    required String password,
-    required String deviceId,
-    required bool allowPrivateHttp,
-  }) async => _session;
-
-  @override
-  Future<LibraryPage> fetchLibraryPage(
-    AuthSession session, {
-    Set<LibraryItemType> types = const {},
-    int limit = 200,
-    String? parentId,
-    String? searchTerm,
-    String? sortBy,
-    String? sortOrder,
-    int startIndex = 0,
-    OperationContext? context,
-  }) async =>
-      const LibraryPage(items: [_item], startIndex: 0, totalRecordCount: 1);
-
-  @override
-  Future<List<LibraryItem>> fetchFavorites(AuthSession session) async => [
-    _item,
-  ];
-
-  @override
-  Future<List<LibraryItem>> fetchRecentlyPlayed(AuthSession session) async => [
-    _item,
-  ];
-
-  @override
-  Future<List<LyricsLine>> fetchLyrics(
-    AuthSession session,
-    String itemId,
-  ) async => const [LyricsLine(text: 'line')];
-
-  @override
-  Future<void> setFavorite(
-    AuthSession session,
-    String itemId,
-    bool favorite,
-  ) async {
-    this.favorite = favorite;
-  }
-
-  @override
-  Uri imageUri(AuthSession session, String itemId, {int width = 600}) =>
-      Uri.parse('https://music.example.com/image/$itemId');
-
-  @override
-  Uri userImageUri(AuthSession session, {int width = 128}) => Uri.parse(
-    'https://music.example.com/user-image/${session.profile.userId}',
-  );
-
-  @override
-  Uri streamUri(AuthSession session, LibraryItem item, {int? maxBitrate}) =>
-      Uri.parse('https://music.example.com/stream/${item.id}');
-
-  @override
-  Map<String, String> playbackHeaders(AuthSession session) => {
-    'Authorization': session.token,
-  };
+class _OfflineForTest implements Exception {
+  const _OfflineForTest();
 }

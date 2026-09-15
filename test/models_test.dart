@@ -110,16 +110,92 @@ void main() {
       position: Duration(seconds: 12),
       itemId: 'track',
     );
-    final discovered = DiscoveredServer(
-      name: 'Music',
-      address: Uri.parse('https://music.example.com'),
-    );
 
     expect(snapshot.queue.current, item);
     expect(download.status, DownloadStatus.complete);
     expect(capabilities.googleCast, isTrue);
     expect(target.name, 'Living room');
     expect(remote.position, const Duration(seconds: 12));
-    expect(discovered.address.host, 'music.example.com');
+  });
+
+  group('PlaybackQueue', () {
+    final items = [for (var i = 0; i < 4; i++) _track('$i')];
+
+    test('up next follows natural order without a play order', () {
+      final queue = PlaybackQueue(items: items, currentIndex: 1);
+      expect(queue.upNextIndices, [2, 3]);
+    });
+
+    test('up next follows the shuffled play order', () {
+      final queue = PlaybackQueue(
+        items: items,
+        currentIndex: 2,
+        shuffle: true,
+        playOrder: const [3, 2, 0, 1],
+      );
+      expect(queue.upNextIndices, [0, 1]);
+    });
+
+    test('nothing is up next without a current track', () {
+      expect(PlaybackQueue(items: items).upNextIndices, isEmpty);
+    });
+
+    test('equality is by list identity so position ticks compare cheaply', () {
+      final order = [1, 0, 2, 3];
+      final a = PlaybackQueue(items: items, currentIndex: 1, playOrder: order);
+      final b = PlaybackQueue(items: items, currentIndex: 1, playOrder: order);
+      final copied = PlaybackQueue(
+        items: items.toList(),
+        currentIndex: 1,
+        playOrder: order,
+      );
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect(a, isNot(copied));
+      expect(a, isNot(PlaybackQueue(items: items, currentIndex: 2)));
+    });
+  });
+
+  test('track order sorts by disc, then track, unnumbered last', () {
+    LibraryItem numbered(String id, int? disc, int? index) => LibraryItem(
+      id: id,
+      profileId: 'profile',
+      serverId: 'server',
+      type: LibraryItemType.track,
+      name: id,
+      discNumber: disc,
+      indexNumber: index,
+    );
+    final tracks = [
+      numbered('loose', 1, null),
+      numbered('2-1', 2, 1),
+      numbered('1-2', 1, 2),
+      numbered('1-1', 1, 1),
+    ]..sort(compareTrackOrder);
+    expect(tracks.map((track) => track.id), ['1-1', '1-2', 'loose', '2-1']);
+  });
+
+  test('artist line prefers credited artists over the album artist', () {
+    expect(
+      const LibraryItem(
+        id: 'a',
+        profileId: 'p',
+        serverId: 's',
+        type: LibraryItemType.track,
+        name: 'Song',
+        subtitle: 'Album Artist',
+        artists: ['One', 'Two'],
+      ).artistLine,
+      'One, Two',
+    );
+    expect(_track('b').artistLine, 'Unknown artist');
   });
 }
+
+LibraryItem _track(String id) => LibraryItem(
+  id: id,
+  profileId: 'profile',
+  serverId: 'server',
+  type: LibraryItemType.track,
+  name: 'Track $id',
+);

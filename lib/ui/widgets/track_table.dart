@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:jamhorse/app/theme.dart';
+import 'package:jamhorse/core/format.dart';
 import 'package:jamhorse/domain/models.dart';
+import 'package:jamhorse/state/library_index.dart';
+import 'package:jamhorse/state/playback_providers.dart';
+import 'package:jamhorse/state/providers.dart';
 import 'package:jamhorse/ui/widgets/artwork.dart';
+import 'package:jamhorse/ui/widgets/hoverable.dart';
+import 'package:jamhorse/ui/widgets/item_menu.dart';
+import 'package:jamhorse/ui/widgets/transport_controls.dart';
 
-/// Spotify-style track listing: index, artwork + title + artist, album,
-/// and duration columns, with a header row.
+const _likeColumn = 40.0;
+const _durationColumn = 52.0;
+const _menuColumn = 40.0;
+
+/// Column headings for [TrackRow]: #, Title, Album, and duration.
 class TrackTableHeader extends StatelessWidget {
   const TrackTableHeader({super.key, this.showAlbum = true});
 
@@ -20,22 +31,30 @@ class TrackTableHeader extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
             children: [
-              const SizedBox(width: 28, child: Text('#', style: style)),
+              const SizedBox(
+                width: 32,
+                child: Text('#', textAlign: TextAlign.center, style: style),
+              ),
               const SizedBox(width: 12),
               const Expanded(flex: 5, child: Text('Title', style: style)),
               if (showAlbum)
                 const Expanded(flex: 4, child: Text('Album', style: style)),
+              const SizedBox(width: _likeColumn),
               const SizedBox(
-                width: 50,
-                child: Icon(
-                  Icons.schedule_rounded,
-                  size: 16,
-                  color: JamColors.muted,
+                width: _durationColumn,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Icon(
+                    Icons.schedule_rounded,
+                    size: 16,
+                    color: JamColors.muted,
+                  ),
                 ),
               ),
+              const SizedBox(width: _menuColumn),
             ],
           ),
         ),
@@ -45,299 +64,312 @@ class TrackTableHeader extends StatelessWidget {
   }
 }
 
-/// Spotify's phone-width track row: artwork, title, artist line with the
-/// offline badge — no index, album, or duration columns.
-class MobileTrackTile extends StatelessWidget {
-  const MobileTrackTile({
-    required this.track,
-    required this.onTap,
-    super.key,
-    this.downloaded = false,
-    this.trailing,
-  });
-
-  final LibraryItem track;
-
-  /// Shows the offline badge: this track plays from its local file.
-  final bool downloaded;
-  final VoidCallback onTap;
-
-  /// Optional control on the right edge (e.g. an un-like heart).
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-        child: Row(
-          children: [
-            SizedBox.square(
-              dimension: 48,
-              child: Artwork(item: track, borderRadius: 4, iconSize: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    track.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFFF0F0F0),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      if (downloaded)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 4),
-                          child: Icon(
-                            Icons.download_for_offline_rounded,
-                            size: 15,
-                            color: JamColors.accentBright,
-                          ),
-                        ),
-                      Flexible(
-                        child: Text(
-                          track.subtitle ?? 'Unknown artist',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: JamColors.muted,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            trailing ??
-                const Icon(
-                  Icons.more_horiz_rounded,
-                  color: JamColors.muted,
-                  size: 22,
-                ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class TrackRow extends StatefulWidget {
+/// Spotify's desktop track row. The playing track turns green with an
+/// equalizer in place of its number; hovering reveals play, like, and the
+/// "more" menu, and right-click opens the menu too.
+class TrackRow extends ConsumerWidget {
   const TrackRow({
     required this.index,
     required this.track,
     required this.onTap,
     super.key,
-    this.albumName,
     this.showAlbum = true,
-    this.downloaded = false,
-    this.action,
+    this.showArtwork = true,
   });
 
   final int index;
   final LibraryItem track;
-  final String? albumName;
-  final bool showAlbum;
-
-  /// Shows the offline badge: this track plays from its local file.
-  final bool downloaded;
   final VoidCallback onTap;
-
-  /// Optional small control (e.g. an un-like heart) shown before the
-  /// duration.
-  final Widget? action;
+  final bool showAlbum;
+  final bool showArtwork;
 
   @override
-  State<TrackRow> createState() => _TrackRowState();
-}
-
-class _TrackRowState extends State<TrackRow> {
-  var _hovered = false;
-  var _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() {
-        _hovered = false;
-        _pressed = false;
-      }),
-      child: AnimatedScale(
-        scale: _pressed ? 0.995 : 1,
-        duration: const Duration(milliseconds: 90),
-        child: InkWell(
-          mouseCursor: SystemMouseCursors.click,
-          onTap: widget.onTap,
-          onTapDown: (_) => setState(() => _pressed = true),
-          onTapUp: (_) => setState(() => _pressed = false),
-          onTapCancel: () => setState(() => _pressed = false),
-          hoverColor: Colors.transparent,
-          borderRadius: BorderRadius.circular(5),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 130),
-            curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
-              color: _hovered
-                  ? Colors.white.withValues(alpha: 0.075)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(5),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 7),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 28,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 120),
-                    switchInCurve: Curves.easeOut,
-                    switchOutCurve: Curves.easeIn,
-                    child: _hovered
-                        ? const Icon(
-                            Icons.play_arrow_rounded,
-                            key: ValueKey('play'),
-                            size: 20,
-                            color: Colors.white,
-                          )
-                        : Text(
-                            '${widget.index}',
-                            key: const ValueKey('index'),
-                            style: const TextStyle(color: JamColors.muted),
-                          ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isCurrent = ref.watch(
+      currentTrackProvider.select((current) => current?.id == track.id),
+    );
+    final playing = isCurrent && ref.watch(playbackPlayingProvider);
+    final downloaded = ref.watch(
+      downloadedItemIdsProvider.select((ids) => ids.contains(track.id)),
+    );
+    final albumName = showAlbum
+        ? ref.watch(
+            libraryIndexProvider.select((index) => index.albumName(track)),
+          )
+        : null;
+    return Hoverable(
+      borderRadius: 4,
+      pressedScale: 1,
+      onTap: onTap,
+      onLongPress: () => showItemMenu(context, ref, track),
+      onSecondaryTapUp: (details) =>
+          showItemMenu(context, ref, track, position: details.globalPosition),
+      builder: (context, hovered) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: hovered
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 32,
+                child: Center(
+                  child: _IndexCell(
+                    index: index,
+                    hovered: hovered,
+                    current: isCurrent,
+                    playing: playing,
+                    onPressed: isCurrent
+                        ? () => ref.read(playerControllerProvider).togglePlay()
+                        : onTap,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 5,
-                  child: Row(
-                    children: [
-                      AnimatedScale(
-                        scale: _hovered ? 1.035 : 1,
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        child: SizedBox.square(
-                          dimension: 42,
-                          child: Artwork(
-                            item: widget.track,
-                            borderRadius: 5,
-                            iconSize: 18,
-                          ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 5,
+                child: Row(
+                  children: [
+                    if (showArtwork) ...[
+                      SizedBox.square(
+                        dimension: 40,
+                        child: Artwork(
+                          item: track,
+                          borderRadius: 4,
+                          iconSize: 18,
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            AnimatedDefaultTextStyle(
-                              duration: const Duration(milliseconds: 120),
-                              style: TextStyle(
-                                color: _hovered
-                                    ? Colors.white
-                                    : const Color(0xFFF0F0F0),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              child: Text(
-                                widget.track.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                if (widget.downloaded)
-                                  const Padding(
-                                    padding: EdgeInsets.only(right: 4),
-                                    child: Icon(
-                                      Icons.download_for_offline_rounded,
-                                      size: 14,
-                                      color: JamColors.accentBright,
-                                    ),
-                                  ),
-                                Flexible(
-                                  child: Text(
-                                    widget.track.subtitle ?? 'Unknown artist',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: JamColors.muted,
-                                      fontSize: 12.5,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
                     ],
-                  ),
+                    Expanded(
+                      child: _TitleAndArtist(
+                        track: track,
+                        current: isCurrent,
+                        downloaded: downloaded,
+                        highlight: hovered,
+                      ),
+                    ),
+                  ],
                 ),
-                if (widget.showAlbum)
-                  Expanded(
-                    flex: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: Text(
-                        widget.albumName ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: _hovered
-                              ? const Color(0xFFE3E3E3)
-                              : JamColors.muted,
-                          fontSize: 13,
-                        ),
+              ),
+              if (showAlbum)
+                Expanded(
+                  flex: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Text(
+                      albumName ?? '',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: hovered ? Colors.white : JamColors.muted,
+                        fontSize: 14,
                       ),
                     ),
                   ),
-                SizedBox(
-                  width: widget.action == null ? 50 : 92,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (widget.action case final action?)
-                        AnimatedOpacity(
-                          opacity: _hovered ? 1 : 0.88,
-                          duration: const Duration(milliseconds: 120),
-                          child: action,
-                        ),
-                      Text(
-                        _time(widget.track.duration),
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(
-                          color: JamColors.muted,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
-              ],
-            ),
+              SizedBox(
+                width: _likeColumn,
+                child: LikeButton(
+                  item: track,
+                  size: 18,
+                  onlyWhenLiked: !hovered,
+                ),
+              ),
+              SizedBox(
+                width: _durationColumn,
+                child: Text(
+                  track.duration == Duration.zero
+                      ? ''
+                      : formatDuration(track.duration),
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.visible,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: JamColors.muted, fontSize: 14),
+                ),
+              ),
+              SizedBox(
+                width: _menuColumn,
+                child: Visibility(
+                  visible: hovered,
+                  maintainSize: true,
+                  maintainAnimation: true,
+                  maintainState: true,
+                  child: ItemMenuButton(item: track, size: 18),
+                ),
+              ),
+            ],
           ),
+        );
+      },
+    );
+  }
+}
+
+class _IndexCell extends StatelessWidget {
+  const _IndexCell({
+    required this.index,
+    required this.hovered,
+    required this.current,
+    required this.playing,
+    required this.onPressed,
+  });
+
+  final int index;
+  final bool hovered;
+  final bool current;
+  final bool playing;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    if (hovered) {
+      return InkResponse(
+        onTap: onPressed,
+        radius: 16,
+        child: Icon(
+          current && playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+          size: 20,
+          color: Colors.white,
         ),
+      );
+    }
+    if (current && playing) {
+      return const Icon(
+        Icons.graphic_eq_rounded,
+        size: 18,
+        color: JamColors.accentBright,
+      );
+    }
+    return Text(
+      '$index',
+      style: TextStyle(
+        color: current ? JamColors.accentBright : JamColors.muted,
+        fontSize: 15,
+        fontFeatures: const [FontFeature.tabularFigures()],
       ),
     );
   }
+}
 
-  static String _time(Duration value) {
-    if (value == Duration.zero) return '';
-    final minutes = value.inMinutes;
-    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
+class _TitleAndArtist extends StatelessWidget {
+  const _TitleAndArtist({
+    required this.track,
+    required this.current,
+    required this.downloaded,
+    this.highlight = false,
+    this.titleSize = 15,
+  });
+
+  final LibraryItem track;
+  final bool current;
+  final bool downloaded;
+  final bool highlight;
+  final double titleSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          track.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: current ? JamColors.accentBright : Colors.white,
+            fontSize: titleSize,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          children: [
+            if (downloaded)
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Icon(
+                  Icons.download_for_offline_rounded,
+                  size: 14,
+                  color: JamColors.accentBright,
+                ),
+              ),
+            Flexible(
+              child: Text(
+                track.artistLine,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: highlight ? Colors.white : JamColors.muted,
+                  fontSize: titleSize - 2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Spotify's phone track row: artwork, title, and artist with the offline
+/// badge, plus a trailing control (the "more" menu by default).
+class MobileTrackTile extends ConsumerWidget {
+  const MobileTrackTile({
+    required this.track,
+    required this.onTap,
+    super.key,
+    this.trailing,
+    this.showArtwork = true,
+  });
+
+  final LibraryItem track;
+  final VoidCallback onTap;
+  final Widget? trailing;
+  final bool showArtwork;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isCurrent = ref.watch(
+      currentTrackProvider.select((current) => current?.id == track.id),
+    );
+    final downloaded = ref.watch(
+      downloadedItemIdsProvider.select((ids) => ids.contains(track.id)),
+    );
+    return InkWell(
+      onTap: onTap,
+      onLongPress: () => showItemMenu(context, ref, track),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        child: Row(
+          children: [
+            if (showArtwork) ...[
+              SizedBox.square(
+                dimension: 48,
+                child: Artwork(item: track, borderRadius: 4, iconSize: 20),
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: _TitleAndArtist(
+                track: track,
+                current: isCurrent,
+                downloaded: downloaded,
+                titleSize: 16,
+              ),
+            ),
+            const SizedBox(width: 8),
+            trailing ?? ItemMenuButton(item: track, size: 22),
+          ],
+        ),
+      ),
+    );
   }
 }
