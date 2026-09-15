@@ -10,6 +10,9 @@ abstract final class JamColors {
   static const muted = Color(0xFFB3B3B3);
   static const subtle = Color(0xFF727272);
   static const divider = Color(0xFF2A2A2A);
+
+  /// The hairline around a frameless desktop window.
+  static const windowEdge = Color(0x40FFFFFF);
 }
 
 ThemeData buildJamHorseTheme() {

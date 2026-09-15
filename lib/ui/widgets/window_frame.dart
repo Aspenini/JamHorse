@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:jamhorse/app/theme.dart';
 import 'package:jamhorse/ui/widgets/brand.dart';
@@ -43,6 +45,72 @@ class StandaloneWindowCaption extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Whether the app draws its own hairline window border. macOS already
+/// outlines frameless windows natively.
+bool get drawsWindowEdge => Platform.isWindows || Platform.isLinux;
+
+/// A faint light outline around a frameless window, as Spotify draws, so the
+/// black window stands apart from what is behind it. Hidden while maximized
+/// or full screen, where the window has no visible edge.
+class WindowEdge extends StatefulWidget {
+  const WindowEdge({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  State<WindowEdge> createState() => _WindowEdgeState();
+}
+
+class _WindowEdgeState extends State<WindowEdge> with WindowListener {
+  var _edgeless = false;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    final edgeless =
+        await windowManager.isMaximized() || await windowManager.isFullScreen();
+    if (mounted && edgeless != _edgeless) {
+      setState(() => _edgeless = edgeless);
+    }
+  }
+
+  @override
+  void onWindowMaximize() => _refresh();
+
+  @override
+  void onWindowUnmaximize() => _refresh();
+
+  @override
+  void onWindowEnterFullScreen() => _refresh();
+
+  @override
+  void onWindowLeaveFullScreen() => _refresh();
+
+  @override
+  Widget build(BuildContext context) {
+    // Painted over the content so the layout does not shift when the edge
+    // appears or disappears.
+    return DecoratedBox(
+      position: DecorationPosition.foreground,
+      decoration: BoxDecoration(
+        border: _edgeless ? null : Border.all(color: JamColors.windowEdge),
+      ),
+      child: widget.child,
     );
   }
 }

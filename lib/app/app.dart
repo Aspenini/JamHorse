@@ -75,18 +75,22 @@ class _JamHorseAppState extends ConsumerState<JamHorseApp> {
       theme: buildJamHorseTheme(),
       routerConfig: router,
       builder: (context, child) {
-        if (!supportsWindowDecorations || !customDecorations || authenticated) {
-          return child ?? const SizedBox.shrink();
+        final frameless = supportsWindowDecorations && customDecorations;
+        Widget content = child ?? const SizedBox.shrink();
+        if (frameless && !authenticated) {
+          content = ColoredBox(
+            color: JamColors.ink,
+            child: Column(
+              children: [
+                const StandaloneWindowCaption(),
+                Expanded(child: content),
+              ],
+            ),
+          );
         }
-        return ColoredBox(
-          color: JamColors.ink,
-          child: Column(
-            children: [
-              const StandaloneWindowCaption(),
-              Expanded(child: child ?? const SizedBox.shrink()),
-            ],
-          ),
-        );
+        return frameless && drawsWindowEdge
+            ? WindowEdge(child: content)
+            : content;
       },
     );
   }
