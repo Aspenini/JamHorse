@@ -12,6 +12,7 @@ import 'package:jamhorse/ui/shell/library_sidebar.dart';
 import 'package:jamhorse/ui/shell/right_panel.dart';
 import 'package:jamhorse/ui/widgets/interaction.dart';
 import 'package:jamhorse/ui/widgets/player_bar.dart';
+import 'package:jamhorse/ui/widgets/resize_handle.dart';
 import 'package:jamhorse/ui/widgets/user_avatar.dart';
 import 'package:jamhorse/ui/widgets/window_frame.dart';
 import 'package:window_manager/window_manager.dart';
@@ -22,9 +23,13 @@ final _searchFocusProvider = Provider<FocusNode>((ref) {
   return node;
 });
 
+/// Width of each side of the top bar, leaving the search field centered.
+const _topBarSideWidth = 220.0;
+
 /// Spotify's three-panel desktop layout: library, content, and the
-/// Now Playing / Queue / Lyrics panel, above the player bar.
-class DesktopShell extends ConsumerWidget {
+/// Now Playing / Queue / Lyrics panel, above the player bar. The gaps
+/// between panels can be dragged to resize them.
+class DesktopShell extends ConsumerStatefulWidget {
   const DesktopShell({
     required this.path,
     required this.customDecorations,
@@ -37,15 +42,27 @@ class DesktopShell extends ConsumerWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final width = MediaQuery.sizeOf(context).width;
+  ConsumerState<DesktopShell> createState() => _DesktopShellState();
+}
+
+class _DesktopShellState extends ConsumerState<DesktopShell> {
+  // Panel widths when the current drag began; the handle reports distance
+  // from there, so the edge tracks the cursor even after passing a limit.
+  double? _libraryDrag;
+  double? _panelDrag;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = widget.path;
+    final customDecorations = widget.customDecorations;
+    final child = widget.child;
     final panel = ref.watch(rightPanelProvider);
-    final libraryWidth = width >= 1900
-        ? 420.0
-        : width >= 1320
-        ? 340.0
-        : 280.0;
-    final panelWidth = (width * 0.25).clamp(300.0, 420.0);
+    final sizes = resolvePanelSizes(
+      windowWidth: MediaQuery.sizeOf(context).width,
+      layout: ref.watch(panelLayoutProvider),
+      rightPanelOpen: panel != null,
+    );
+    final panels = ref.read(panelLayoutProvider.notifier);
     final player = ref.read(playerControllerProvider);
     final mac = defaultTargetPlatform == TargetPlatform.macOS;
     return CallbackShortcuts(
@@ -73,7 +90,7 @@ class DesktopShell extends ConsumerWidget {
             children: [
               _TopBar(
                 path: path,
-                sideWidth: libraryWidth,
+                sideWidth: _topBarSideWidth,
                 customDecorations: customDecorations,
               ),
               Expanded(
@@ -83,16 +100,54 @@ class DesktopShell extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       SizedBox(
-                        width: libraryWidth,
-                        child: SpotifyPanel(child: LibrarySidebar(path: path)),
+                        width: sizes.library,
+                        child: SpotifyPanel(
+                          child: LibrarySidebar(
+                            path: path,
+                            collapsed: sizes.libraryCollapsed,
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 8),
+                      ResizeHandle(
+                        key: const ValueKey('library-resize-handle'),
+                        onDragStart: () => _libraryDrag = sizes.library,
+                        onDragUpdate: (dx) => panels.dragLibraryTo(
+                          (_libraryDrag ?? sizes.library) + dx,
+                          widthBeforeDrag: _libraryDrag,
+                        ),
+                        onDragEnd: () {
+                          _libraryDrag = null;
+                          panels.save();
+                        },
+                        onDoubleTap: panels.resetLibrary,
+                      ),
                       Expanded(
                         child: SpotifyPanel(
                           child: EntranceMotion(watchKey: path, child: child),
                         ),
                       ),
-                      _RightPanelDrawer(width: panelWidth, view: panel),
+                      _RightPanelDrawer(
+                        width: sizes.rightPanel,
+                        view: panel,
+                        // Width changes follow the pointer instantly while
+                        // dragging; opening and closing still animate.
+                        animate: _panelDrag == null,
+                        handle: ResizeHandle(
+                          key: const ValueKey('right-panel-resize-handle'),
+                          onDragStart: () =>
+                              setState(() => _panelDrag = sizes.rightPanel),
+                          // The handle is on the panel's left edge, so
+                          // moving left widens it.
+                          onDragUpdate: (dx) => panels.setRightPanelWidth(
+                            (_panelDrag ?? sizes.rightPanel) - dx,
+                          ),
+                          onDragEnd: () {
+                            setState(() => _panelDrag = null);
+                            panels.save();
+                          },
+                          onDoubleTap: panels.resetRightPanel,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -107,10 +162,17 @@ class DesktopShell extends ConsumerWidget {
 }
 
 class _RightPanelDrawer extends StatefulWidget {
-  const _RightPanelDrawer({required this.width, required this.view});
+  const _RightPanelDrawer({
+    required this.width,
+    required this.view,
+    required this.handle,
+    this.animate = true,
+  });
 
   final double width;
   final RightPanelView? view;
+  final Widget handle;
+  final bool animate;
 
   @override
   State<_RightPanelDrawer> createState() => _RightPanelDrawerState();
@@ -134,10 +196,12 @@ class _RightPanelDrawerState extends State<_RightPanelDrawer> {
   @override
   Widget build(BuildContext context) {
     final open = widget.view != null;
-    // The 8px gutter travels with the drawer.
+    // The 8px resize handle travels with the drawer.
     final fullWidth = widget.width + 8;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 260),
+      duration: widget.animate
+          ? const Duration(milliseconds: 260)
+          : Duration.zero,
       curve: Curves.easeOutCubic,
       width: open ? fullWidth : 0,
       onEnd: () {
@@ -150,9 +214,14 @@ class _RightPanelDrawerState extends State<_RightPanelDrawer> {
                 alignment: Alignment.centerLeft,
                 minWidth: fullWidth,
                 maxWidth: fullWidth,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: SpotifyPanel(child: RightPanel(view: _shown)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    widget.handle,
+                    Expanded(
+                      child: SpotifyPanel(child: RightPanel(view: _shown)),
+                    ),
+                  ],
                 ),
               ),
             ),

@@ -52,8 +52,10 @@ sizes and Jellyfin's total-record count. Artists and genres are queried with
   `playbackPlayingProvider`, `playbackPositionProvider`, …) so position ticks
   rebuild only seek bars. `PlayerController` routes transport commands to
   whichever player is audible.
-- `ui_state.dart` holds the desktop right panel and the shared "Your Library"
-  filter, sort, and layout; `navigation_history.dart` provides desktop
+- `ui_state.dart` holds the desktop right panel, the saved panel widths
+  (fitted to the window by `resolvePanelSizes`, which keeps the main view at
+  least 360px wide and collapses the library to its rail when needed), and the
+  shared "Your Library" filter, sort, and layout; `navigation_history.dart` provides desktop
   back/forward, which go_router's pop stack cannot.
 - The router is built once and re-runs its redirect through
   `refreshListenable` when sign-in state changes.

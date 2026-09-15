@@ -363,8 +363,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       context: context,
                       applicationName: 'JamHorse',
                       applicationVersion: _version,
-                      applicationLegalese:
-                          'Copyright © 2026 Aspenini\nGPLv3',
+                      applicationLegalese: 'Copyright © 2026 Aspenini\nGPLv3',
                     ),
                   ),
                   ListTile(

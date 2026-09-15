@@ -9,8 +9,9 @@ and licensed under GPLv3.
 ## Included
 
 - Spotify-style three-panel desktop layout (Your Library, content, and a
-  Now Playing / Queue / Lyrics panel) and phone layout with Home, Search, and
-  Your Library tabs
+  Now Playing / Queue / Lyrics panel) with drag-to-resize panel edges and a
+  collapsible library rail, and a phone layout with Home, Search, and Your
+  Library tabs
 - Multi-server Jellyfin login with secure token storage
 - Cache-first albums, artists, songs, playlists, genres, and liked songs
 - Grouped search with a top result, and "Browse all" genre tiles

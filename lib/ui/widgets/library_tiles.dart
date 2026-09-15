@@ -302,6 +302,84 @@ class LibraryEntriesView extends ConsumerWidget {
   }
 }
 
+/// The collapsed sidebar: artwork only, names in tooltips.
+class LibraryRail extends ConsumerWidget {
+  const LibraryRail({required this.onNavigate, super.key, this.selectedPath});
+
+  final ValueChanged<String> onNavigate;
+  final String? selectedPath;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final entries = ref.watch(libraryEntriesProvider);
+    Widget tile({
+      required String label,
+      required String path,
+      required Widget artwork,
+      LibraryItem? item,
+      bool circular = false,
+    }) {
+      final selected = selectedPath == path;
+      return Tooltip(
+        message: label,
+        preferBelow: false,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => onNavigate(path),
+          onSecondaryTapUp: item == null
+              ? null
+              : (details) => showItemMenu(
+                  context,
+                  ref,
+                  item,
+                  position: details.globalPosition,
+                ),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: selected
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: SizedBox.square(
+              dimension: 48,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(circular ? 24 : 4),
+                child: artwork,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(6, 4, 6, 24),
+      children: [
+        tile(
+          label: 'Liked Songs',
+          path: '/liked',
+          artwork: const LikedSongsArt(iconSize: 20),
+        ),
+        tile(
+          label: 'Downloads',
+          path: '/downloads',
+          artwork: const DownloadsArt(iconSize: 20),
+        ),
+        for (final item in entries)
+          tile(
+            label: item.name,
+            path: '/item/${item.id}',
+            item: item,
+            circular: item.type == LibraryItemType.artist,
+            artwork: Artwork(item: item, borderRadius: 0, iconSize: 20),
+          ),
+      ],
+    );
+  }
+}
+
 class LibraryEntryTile extends ConsumerWidget {
   const LibraryEntryTile({
     required this.title,

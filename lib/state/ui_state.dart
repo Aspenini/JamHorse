@@ -1,9 +1,196 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:jamhorse/core/logging.dart';
 import 'package:jamhorse/domain/models.dart';
 import 'package:jamhorse/state/library_index.dart';
 import 'package:jamhorse/state/providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Widths of the desktop library sidebar and right panel, as the user left
+/// them. [resolvePanelSizes] fits them to the window.
+@immutable
+class PanelLayout {
+  const PanelLayout({
+    this.libraryWidth = defaultLibraryWidth,
+    this.libraryCollapsed = false,
+    this.rightPanelWidth = defaultRightPanelWidth,
+  });
+
+  static const defaultLibraryWidth = 340.0;
+  static const collapsedLibraryWidth = 72.0;
+  static const minLibraryWidth = 280.0;
+  static const maxLibraryWidth = 720.0;
+
+  /// Dragging the library narrower than this collapses it to the rail.
+  static const collapseThreshold = 176.0;
+
+  static const defaultRightPanelWidth = 360.0;
+  static const minRightPanelWidth = 280.0;
+  static const maxRightPanelWidth = 560.0;
+
+  /// The main view never gets narrower than this.
+  static const minContentWidth = 360.0;
+
+  final double libraryWidth;
+  final bool libraryCollapsed;
+  final double rightPanelWidth;
+
+  PanelLayout copyWith({
+    double? libraryWidth,
+    bool? libraryCollapsed,
+    double? rightPanelWidth,
+  }) {
+    return PanelLayout(
+      libraryWidth: libraryWidth ?? this.libraryWidth,
+      libraryCollapsed: libraryCollapsed ?? this.libraryCollapsed,
+      rightPanelWidth: rightPanelWidth ?? this.rightPanelWidth,
+    );
+  }
+}
+
+typedef PanelSizes = ({
+  double library,
+  bool libraryCollapsed,
+  double rightPanel,
+});
+
+/// Fits [layout] into a window [windowWidth] wide. The library shrinks
+/// before the right panel does, and collapses to its rail when even its
+/// minimum width would squeeze the main view below
+/// [PanelLayout.minContentWidth].
+PanelSizes resolvePanelSizes({
+  required double windowWidth,
+  required PanelLayout layout,
+  required bool rightPanelOpen,
+}) {
+  // Outer gutters plus the library's resize handle.
+  const chrome = 8.0 * 3;
+  const handle = 8.0;
+  final desiredPanel = layout.rightPanelWidth.clamp(
+    PanelLayout.minRightPanelWidth,
+    PanelLayout.maxRightPanelWidth,
+  );
+  final panelSpace = rightPanelOpen ? desiredPanel + handle : 0.0;
+  final roomForLibrary =
+      windowWidth - chrome - panelSpace - PanelLayout.minContentWidth;
+  final collapsed =
+      layout.libraryCollapsed || roomForLibrary < PanelLayout.minLibraryWidth;
+  final library = collapsed
+      ? PanelLayout.collapsedLibraryWidth
+      : layout.libraryWidth.clamp(
+          PanelLayout.minLibraryWidth,
+          math.min(PanelLayout.maxLibraryWidth, roomForLibrary),
+        );
+  final roomForPanel =
+      windowWidth - chrome - library - handle - PanelLayout.minContentWidth;
+  final panel = desiredPanel.clamp(
+    PanelLayout.minRightPanelWidth,
+    math.max(PanelLayout.minRightPanelWidth, roomForPanel),
+  );
+  return (
+    library: library.toDouble(),
+    libraryCollapsed: collapsed,
+    rightPanel: panel.toDouble(),
+  );
+}
+
+final panelLayoutProvider =
+    NotifierProvider<PanelLayoutController, PanelLayout>(
+      PanelLayoutController.new,
+    );
+
+class PanelLayoutController extends Notifier<PanelLayout> {
+  static const _libraryWidthKey = 'libraryWidth';
+  static const _libraryCollapsedKey = 'libraryCollapsed';
+  static const _rightPanelWidthKey = 'rightPanelWidth';
+
+  @override
+  PanelLayout build() {
+    unawaited(_load());
+    return const PanelLayout();
+  }
+
+  /// Follows a drag of the library's edge to [width]; dragging far enough
+  /// in collapses it, and dragging back out expands it again. Collapsing
+  /// restores [widthBeforeDrag] so expanding later returns to where the
+  /// user started, not wherever the pointer passed on the way in.
+  void dragLibraryTo(double width, {double? widthBeforeDrag}) {
+    final restore =
+        widthBeforeDrag != null &&
+            widthBeforeDrag >= PanelLayout.minLibraryWidth
+        ? widthBeforeDrag
+        : state.libraryWidth;
+    state = width < PanelLayout.collapseThreshold
+        ? state.copyWith(libraryCollapsed: true, libraryWidth: restore)
+        : state.copyWith(
+            libraryCollapsed: false,
+            libraryWidth: width.clamp(
+              PanelLayout.minLibraryWidth,
+              PanelLayout.maxLibraryWidth,
+            ),
+          );
+  }
+
+  void toggleLibrary() {
+    state = state.copyWith(libraryCollapsed: !state.libraryCollapsed);
+    unawaited(save());
+  }
+
+  void resetLibrary() {
+    state = state.copyWith(
+      libraryCollapsed: false,
+      libraryWidth: PanelLayout.defaultLibraryWidth,
+    );
+    unawaited(save());
+  }
+
+  void setRightPanelWidth(double width) {
+    state = state.copyWith(
+      rightPanelWidth: width.clamp(
+        PanelLayout.minRightPanelWidth,
+        PanelLayout.maxRightPanelWidth,
+      ),
+    );
+  }
+
+  void resetRightPanel() {
+    state = state.copyWith(rightPanelWidth: PanelLayout.defaultRightPanelWidth);
+    unawaited(save());
+  }
+
+  Future<void> save() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_libraryWidthKey, state.libraryWidth);
+      await prefs.setBool(_libraryCollapsedKey, state.libraryCollapsed);
+      await prefs.setDouble(_rightPanelWidthKey, state.rightPanelWidth);
+    } catch (error) {
+      appLog.fine('Panel widths not saved: $error');
+    }
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!ref.mounted) return;
+      state = PanelLayout(
+        libraryWidth:
+            prefs.getDouble(_libraryWidthKey) ??
+            PanelLayout.defaultLibraryWidth,
+        libraryCollapsed: prefs.getBool(_libraryCollapsedKey) ?? false,
+        rightPanelWidth:
+            prefs.getDouble(_rightPanelWidthKey) ??
+            PanelLayout.defaultRightPanelWidth,
+      );
+    } catch (error) {
+      appLog.fine('Panel widths unavailable: $error');
+    }
+  }
+}
 
 /// What the desktop right-hand panel shows; null when it is closed.
 enum RightPanelView { nowPlaying, queue, lyrics }
